@@ -11,9 +11,20 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Para termos certeza de qual URL o app está usando
     setDebugUrl(import.meta.env.VITE_SUPABASE_URL || 'URL_NAO_ENCONTRADA');
-  }, []);
+    
+    // Se o usuário já estiver logado, buscar o perfil e redirecionar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        supabase.from('profiles').select('role').eq('id', session.user.id).single()
+          .then(({ data }) => {
+            if (data?.role === 'admin') navigate('/admin');
+            else if (data?.role === 'gestor') navigate('/gestor');
+            else if (data?.role === 'professor') navigate('/professor');
+          });
+      }
+    });
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

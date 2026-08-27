@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Garantir que a coluna email exista caso a tabela já estivesse criada
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS temp_password BOOLEAN DEFAULT FALSE;
+
 -- ============================================================
 -- 3. STUDENTS
 -- ============================================================

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -7,41 +7,53 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [debugUrl, setDebugUrl] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Para termos certeza de qual URL o app está usando
+    setDebugUrl(import.meta.env.VITE_SUPABASE_URL || 'URL_NAO_ENCONTRADA');
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      // Buscar o perfil do usuário para saber para onde redirecionar
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profileError) {
-        setError('Erro ao buscar perfil. Contate o administrador.');
-      } else if (profileData) {
-        const role = profileData.role;
-        if (role === 'admin') navigate('/admin');
-        else if (role === 'gestor') navigate('/gestor');
-        else if (role === 'professor') navigate('/professor');
-        else setError('Perfil inválido.');
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
       }
+
+      if (data?.user) {
+        // Buscar o perfil do usuário
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError) {
+          setError('Erro ao buscar perfil: ' + profileError.message);
+        } else if (profileData) {
+          const role = profileData.role;
+          if (role === 'admin') navigate('/admin');
+          else if (role === 'gestor') navigate('/gestor');
+          else if (role === 'professor') navigate('/professor');
+          else setError('Perfil sem permissão atribuída.');
+        } else {
+          setError('Perfil não encontrado no banco de dados.');
+        }
+      }
+    } catch (err) {
+      setError('Erro de rede: ' + err.message);
     }
     setLoading(false);
   };
@@ -49,7 +61,16 @@ export default function Login() {
   return (
     <div className="login-container">
       <h2>Entrar no Sistema</h2>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <p style={{ fontSize: '11px', color: '#999', marginBottom: '10px' }}>
+        Conectando em: {debugUrl}
+      </p>
+      
+      {error && (
+        <div style={{ background: '#fee2e2', color: '#9b1c26', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px' }}>
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleLogin}>
         <div>
           <label>Email</label>
@@ -72,7 +93,7 @@ export default function Login() {
           />
         </div>
         <button type="submit" className="btn" disabled={loading}>
-          {loading ? 'Entrando...' : 'Entrar'}
+          {loading ? 'Conectando...' : 'Entrar'}
         </button>
       </form>
     </div>

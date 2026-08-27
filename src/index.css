@@ -1,7 +1,7 @@
 :root {
-  --primary: #3b82f6;
-  --bg-color: #f3f4f6;
-  --text-color: #1f2937;
+  --primary: #9b1c26; /* Cor Vinho (Themis Class) */
+  --bg-color: #ffffff; /* Branco */
+  --text-color: #333333;
 }
 
 * {

@@ -11,7 +11,7 @@ import ProfessorPanel from './pages/ProfessorPanel';
 function Home() {
   return (
     <div className="home-container">
-      <h1>Sistema de Ocorrências</h1>
+      <h1 style={{ color: 'var(--primary)' }}>Themis Class</h1>
       <p>Bem-vindo ao portal da escola.</p>
       <Link to="/login" className="btn">Entrar</Link>
     </div>

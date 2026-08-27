@@ -1,15 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { 
-  LayoutDashboard, 
-  AlertTriangle, 
-  Users, 
-  GraduationCap, 
-  BookOpen, 
-  Settings, 
-  LogOut,
-  Bell,
-  MessageSquare
+import {
+  LayoutDashboard, AlertTriangle, Users, GraduationCap, BookOpen,
+  Settings, LogOut, Bell, MessageSquare, PlusCircle, BarChart3, Tag
 } from 'lucide-react';
 
 export default function GestorLayout() {
@@ -22,97 +15,94 @@ export default function GestorLayout() {
   };
 
   const menuItems = [
-    { path: '/gestor', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={20} /> },
-    { path: '/gestor/alunos', label: 'Alunos', icon: <Users size={20} /> },
-    { path: '/gestor/professores', label: 'Professores', icon: <GraduationCap size={20} /> },
-    { path: '/gestor/turmas', label: 'Turmas', icon: <BookOpen size={20} /> },
-    { path: '/gestor/tipos-ocorrencia', label: 'Tipos de Ocorrência', icon: <Settings size={20} /> },
-    { path: '/gestor/comunicacoes', label: 'Comunicações', icon: <MessageSquare size={20} /> },
+    { path: '/gestor', label: 'Dashboard', icon: <LayoutDashboard size={19} /> },
+    { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={19} /> },
+    { path: '/gestor/nova-ocorrencia', label: 'Nova Ocorrência', icon: <PlusCircle size={19} /> },
+    { path: '/gestor/alunos', label: 'Alunos', icon: <Users size={19} /> },
+    { path: '/gestor/professores', label: 'Professores', icon: <GraduationCap size={19} /> },
+    { path: '/gestor/turmas', label: 'Turmas', icon: <BookOpen size={19} /> },
+    { path: '/gestor/tipos-ocorrencia', label: 'Tipos de Ocorrência', icon: <Tag size={19} /> },
+    { path: '/gestor/comunicacoes', label: 'Comunicações', icon: <MessageSquare size={19} /> },
+    { path: '/gestor/relatorios', label: 'Relatórios', icon: <BarChart3 size={19} /> },
+    { path: '/gestor/configuracoes', label: 'Configurações', icon: <Settings size={19} /> },
   ];
+
+  const isActive = (path) => {
+    if (path === '/gestor') return location.pathname === '/gestor';
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>
       {/* Sidebar */}
-      <aside style={{ 
-        width: '260px', 
-        backgroundColor: '#fff', 
+      <aside style={{
+        width: '260px',
+        backgroundColor: '#fff',
         borderRight: '1px solid #e5e7eb',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        position: 'fixed',
+        height: '100vh',
+        overflowY: 'auto',
+        zIndex: 10
       }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <h2 style={{ color: 'var(--primary)', margin: 0, fontSize: '1.5rem' }}>Themis Class</h2>
-          <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>Gestão Escolar</p>
+          <h2 style={{ color: '#9b1c26', margin: '0 0 2px 0', fontSize: '1.4rem', fontWeight: '700' }}>Themis Class</h2>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280' }}>Gestão Escolar de Ocorrências</p>
         </div>
 
-        <nav style={{ flex: 1, padding: '1rem 0' }}>
-          {menuItems.map(item => {
-            const isActive = location.pathname === item.path || (item.path !== '/gestor' && location.pathname.startsWith(item.path));
-            return (
-              <Link 
-                key={item.path} 
-                to={item.path}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem 1.5rem',
-                  color: isActive ? 'var(--primary)' : '#4b5563',
-                  backgroundColor: isActive ? '#fdf2f2' : 'transparent',
-                  borderRight: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-                  textDecoration: 'none',
-                  fontWeight: isActive ? '600' : '400',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav style={{ flex: 1, padding: '0.5rem 0' }}>
+          {menuItems.map(item => (
+            <Link
+              key={item.path}
+              to={item.path}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.7rem 1.25rem',
+                color: isActive(item.path) ? '#9b1c26' : '#4b5563',
+                backgroundColor: isActive(item.path) ? '#fdf2f2' : 'transparent',
+                borderRight: `3px solid ${isActive(item.path) ? '#9b1c26' : 'transparent'}`,
+                textDecoration: 'none',
+                fontWeight: isActive(item.path) ? '600' : '400',
+                fontSize: '14px',
+                transition: 'background-color 0.15s'
+              }}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          ))}
         </nav>
 
         <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb' }}>
-          <button 
+          <button
             onClick={handleLogout}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              width: '100%',
-              padding: '0.75rem',
-              background: 'none',
-              border: 'none',
-              color: '#ef4444',
-              cursor: 'pointer',
-              fontWeight: '500',
-              textAlign: 'left'
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              width: '100%', padding: '0.75rem', background: 'none',
+              border: 'none', color: '#ef4444', cursor: 'pointer',
+              fontWeight: '500', fontSize: '14px', borderRadius: '6px'
             }}
           >
-            <LogOut size={20} />
+            <LogOut size={19} />
             Sair do Sistema
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ 
-          height: '64px', 
-          backgroundColor: '#fff', 
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '260px' }}>
+        <header style={{
+          height: '60px', backgroundColor: '#fff',
           borderBottom: '1px solid #e5e7eb',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          padding: '0 2rem'
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'flex-end', padding: '0 2rem',
+          position: 'sticky', top: 0, zIndex: 9
         }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}>
-              <Bell size={20} color="#4b5563" />
-              <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-            </button>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+            <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: '#9b1c26', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px' }}>
               G
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function AdminPanel() {
   const [schools, setSchools] = useState([]);
@@ -45,7 +45,25 @@ export default function AdminPanel() {
           )}
         </ul>
         
-        <button className="btn" style={{ marginTop: '1rem', width: 'auto' }}>+ Cadastrar Nova Escola</button>
+        <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
+          <button className="btn" style={{ width: 'auto' }}>+ Cadastrar Nova Escola</button>
+          
+          <Link to="/gestor" className="btn" style={{ 
+            backgroundColor: '#4b5563', 
+            textDecoration: 'none', 
+            textAlign: 'center',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            padding: '0.5rem 1rem',
+            borderRadius: '4px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}>
+            Acessar Painel do Gestor (Exemplo)
+          </Link>
+        </div>
       </div>
     </div>
   );

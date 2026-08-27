@@ -6,83 +6,76 @@ import './index.css';
 import Login from './pages/Login';
 import AdminPanel from './pages/AdminPanel';
 import GestorPanel from './pages/GestorPanel';
+import GestorLayout from './layouts/GestorLayout';
+import Dashboard from './pages/gestor/Dashboard';
 import ProfessorPanel from './pages/ProfessorPanel';
 
-function Home() {
-  return (
-    <div className="home-container">
-      <h1 style={{ color: 'var(--primary)' }}>Themis Class</h1>
-      <p>Bem-vindo ao portal da escola.</p>
-      <Link to="/login" className="btn">Entrar</Link>
-    </div>
-  );
-}
-
-// Componente para proteger rotas baseado no auth e role
-function ProtectedRoute({ children, allowedRole }) {
+function ProtectedRoute({ children, allowedRoles }) {
+  const [session, setSession] = useState(null);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    checkAuth();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            setRole(data?.role);
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
+    });
   }, []);
 
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setIsAuthorized(false);
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single();
-
-    if (profile && profile.role === allowedRole) {
-      setIsAuthorized(true);
-    } else {
-      setIsAuthorized(false);
-    }
-    setLoading(false);
-  };
-
   if (loading) return <div>Carregando...</div>;
-  if (!isAuthorized) return <Navigate to="/login" />;
+  if (!session) return <Navigate to="/login" />;
+  if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/login" />; // Pode redirecionar para uma pág. Não Autorizado
 
   return children;
 }
 
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          
-          <Route path="/admin/*" element={
-            <ProtectedRoute allowedRole="admin">
-              <AdminPanel />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/gestor/*" element={
-            <ProtectedRoute allowedRole="gestor">
-              <GestorPanel />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/professor/*" element={
-            <ProtectedRoute allowedRole="professor">
-              <ProfessorPanel />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </div>
-    </Router>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/login" element={<Login />} />
+        
+        <Route path="/admin" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminPanel />
+          </ProtectedRoute>
+        } />
+        
+        {/* Gestor Routes */}
+        <Route path="/gestor" element={
+          <ProtectedRoute allowedRoles={['gestor', 'admin']}>
+            <GestorLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Dashboard />} />
+          <Route path="ocorrencias" element={<div>Ocorrências em breve</div>} />
+          <Route path="alunos" element={<div>Alunos em breve</div>} />
+          <Route path="professores" element={<div>Professores em breve</div>} />
+          <Route path="turmas" element={<div>Turmas em breve</div>} />
+          <Route path="tipos-ocorrencia" element={<div>Tipos de Ocorrência em breve</div>} />
+          <Route path="comunicacoes" element={<div>Comunicações em breve</div>} />
+        </Route>
+
+        <Route path="/professor" element={
+          <ProtectedRoute allowedRoles={['professor']}>
+            <ProfessorPanel />
+          </ProtectedRoute>
+        } />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

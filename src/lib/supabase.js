@@ -8,3 +8,17 @@ if (!supabaseUrl || supabaseUrl === 'https://sua-url-do-supabase.supabase.co') {
 }
 
 export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder')
+
+// Cliente secundário para criar usuários (signup) sem deslogar o usuário atual
+export const supabaseAdminAuth = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder', {
+  auth: {
+    storage: {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {}
+    },
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
+  }
+})

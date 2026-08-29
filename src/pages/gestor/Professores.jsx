@@ -3,7 +3,7 @@ import { supabase, supabaseAdminAuth } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Loader2, Lock, Unlock, Mail, ShieldAlert } from 'lucide-react';
+import { Plus, Loader2, Lock, Unlock, Mail, AlertTriangle } from 'lucide-react';
 
 export default function Professores() {
   const [professors, setProfessors] = useState([]);
@@ -11,10 +11,11 @@ export default function Professores() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
+  const [school, setSchool] = useState(null);
 
-  useEffect(() => { fetchProfessors(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const fetchProfessors = async () => {
+  const fetchData = async () => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
@@ -22,7 +23,17 @@ export default function Professores() {
     const { data: currentProfile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
     if (!currentProfile?.school_id) return;
 
-    const { data } = await supabase.from('profiles').select('*').eq('role', 'professor').eq('school_id', currentProfile.school_id).order('name');
+    // Dados da escola (incluindo limite)
+    const { data: schoolData } = await supabase.from('schools').select('id, name, max_professors').eq('id', currentProfile.school_id).single();
+    setSchool(schoolData || null);
+
+    // Professores da escola
+    const { data } = await supabase.from('profiles')
+      .select('*')
+      .eq('role', 'professor')
+      .eq('school_id', currentProfile.school_id)
+      .order('name');
+
     setProfessors(data || []);
     setLoading(false);
   };
@@ -31,64 +42,120 @@ export default function Professores() {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
       return showToast('Nome, E-mail e Senha são obrigatórios.', 'error');
     }
+    if (form.password.length < 6) {
+      return showToast('A senha deve ter pelo menos 6 caracteres.', 'error');
+    }
+
+    // Validar limite de professores
+    const maxAllowed = school?.max_professors || 30;
+    if (professors.length >= maxAllowed) {
+      return showToast(`Sua escola atingiu o limite de ${maxAllowed} professores. Entre em contato com o administrador para aumentar o limite.`, 'error');
+    }
+
     setSaving(true);
-    
-    // Obter escola do gestor atual
+
     const { data: userData } = await supabase.auth.getUser();
     const { data: currentProfile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
 
     if (!currentProfile?.school_id) {
-      showToast('Erro: Não foi possível identificar sua escola.', 'error');
+      showToast('Erro: escola não identificada.', 'error');
       setSaving(false);
       return;
     }
 
-    // Criar auth user usando cliente secundário
+    // Verificar se email já existe nos profiles
+    const { data: existingProfile } = await supabase.from('profiles').select('id').eq('email', form.email).maybeSingle();
+    if (existingProfile) {
+      showToast('Já existe um usuário com este e-mail.', 'error');
+      setSaving(false);
+      return;
+    }
+
+    // Criar auth user usando cliente secundário (não desloga o gestor atual)
     const { data: authData, error: authError } = await supabaseAdminAuth.auth.signUp({
       email: form.email,
-      password: form.password
+      password: form.password,
+      options: {
+        data: { name: form.name, role: 'professor', school_id: currentProfile.school_id }
+      }
     });
 
     if (authError) {
       showToast('Erro ao criar acesso: ' + authError.message, 'error');
-    } else if (authData?.user) {
-      // Atualizar profile
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: authData.user.id,
-        role: 'professor',
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        school_id: currentProfile.school_id,
-        active: true,
-        temp_password: true
-      });
-      if (profileError) showToast('Erro ao atualizar perfil do professor.', 'error');
-      else showToast('Professor cadastrado com sucesso!');
+      setSaving(false);
+      return;
     }
 
-    setShowModal(false);
-    setForm({ name: '', email: '', password: '', phone: '' });
-    fetchProfessors();
+    if (!authData?.user) {
+      showToast('Erro inesperado ao criar conta.', 'error');
+      setSaving(false);
+      return;
+    }
+
+    // Criar / Atualizar profile
+    const { error: profileError } = await supabase.from('profiles').upsert({
+      id: authData.user.id,
+      role: 'professor',
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      school_id: currentProfile.school_id,
+      active: true,
+      temp_password: true
+    }, { onConflict: 'id' });
+
+    if (profileError) {
+      showToast('Conta criada, mas erro ao salvar perfil: ' + profileError.message, 'error');
+    } else {
+      showToast(`Professor ${form.name} cadastrado com sucesso!`);
+      setShowModal(false);
+      setForm({ name: '', email: '', password: '', phone: '' });
+      fetchData();
+    }
+
     setSaving(false);
   };
 
   const toggleStatus = async (prof) => {
     const { error } = await supabase.from('profiles').update({ active: !prof.active }).eq('id', prof.id);
     if (error) showToast('Erro ao alterar status.', 'error');
-    else { showToast(`Professor ${!prof.active ? 'ativado' : 'desativado'}.`); fetchProfessors(); }
+    else { showToast(`Professor ${!prof.active ? 'ativado' : 'desativado'}.`); fetchData(); }
   };
+
+  const maxProfessors = school?.max_professors || 30;
+  const isFull = professors.length >= maxProfessors;
 
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' };
   const lbl = { display: 'block', marginBottom: '6px', fontSize: '13px', color: '#374151', fontWeight: '500' };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', color: '#111827', margin: 0 }}>Professores</h1>
-        <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+        <button
+          onClick={() => {
+            if (isFull) return showToast(`Sua escola atingiu o limite de ${maxProfessors} professores. Contate o administrador.`, 'error');
+            setShowModal(true);
+          }}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isFull ? '#d1d5db' : '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: isFull ? 'not-allowed' : 'pointer', fontSize: '14px' }}
+        >
           <Plus size={18} /> Novo Professor
         </button>
+      </div>
+
+      {/* Barra de uso do limite */}
+      <div style={{ marginBottom: '1.5rem', backgroundColor: '#fff', borderRadius: '10px', padding: '14px 18px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '14px', color: '#374151' }}>
+          <strong>{professors.length}</strong> de <strong>{maxProfessors}</strong> professores cadastrados
+        </div>
+        <div style={{ width: '200px', backgroundColor: '#e5e7eb', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min(100, (professors.length / maxProfessors) * 100)}%`, backgroundColor: isFull ? '#ef4444' : '#9b1c26', height: '100%', borderRadius: '999px', transition: 'width 0.4s' }} />
+        </div>
+        {isFull && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+            <AlertTriangle size={16} /> Limite atingido
+          </div>
+        )}
       </div>
 
       <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
@@ -127,14 +194,14 @@ export default function Professores() {
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Cadastrar Professor">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '6px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <Mail color="#166534" size={20} style={{ marginTop: '2px' }}/>
-            <div style={{ fontSize: '13px', color: '#166534' }}>
-              <strong>Acesso ao Sistema:</strong> O professor usará este e-mail e senha para fazer login no Themis Class. Repasse estas informações para ele de forma segura.
+          <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px', borderRadius: '6px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <Mail color="#1e40af" size={20} style={{ marginTop: '2px' }} />
+            <div style={{ fontSize: '13px', color: '#1e40af' }}>
+              <strong>Acesso ao Sistema:</strong> O professor usará este e-mail e senha para fazer login no Themis Class.
             </div>
           </div>
 
-          {[['name', 'Nome Completo *', 'text'], ['email', 'E-mail de Acesso *', 'email'], ['password', 'Senha Inicial *', 'text'], ['phone', 'Telefone', 'text']].map(([field, label, type]) => (
+          {[['name', 'Nome Completo *', 'text'], ['email', 'E-mail de Acesso *', 'email'], ['password', 'Senha Inicial * (mín. 6 caracteres)', 'text'], ['phone', 'Telefone', 'text']].map(([field, label, type]) => (
             <div key={field}>
               <label style={lbl}>{label}</label>
               <input type={type} style={inp} value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} />

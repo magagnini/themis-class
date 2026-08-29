@@ -12,7 +12,8 @@ export default function AdminSchools() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ 
     name: '', cnpj: '', email: '', phone: '', address: '',
-    gestorName: '', gestorEmail: '', gestorPassword: '' 
+    gestorName: '', gestorEmail: '', gestorPassword: '',
+    max_professors: 30
   });
 
   useEffect(() => { fetchSchools(); }, []);
@@ -32,7 +33,9 @@ export default function AdminSchools() {
     
     // 1. Criar a Escola
     const { data: newSchool, error: schoolError } = await supabase.from('schools').insert([{
-      name: form.name, cnpj: form.cnpj, email: form.email, phone: form.phone, address: form.address, status: 'active'
+      name: form.name, cnpj: form.cnpj, email: form.email, phone: form.phone, 
+      address: form.address, status: 'active',
+      max_professors: Number(form.max_professors) || 30
     }]).select().single();
 
     if (schoolError) {
@@ -96,20 +99,21 @@ export default function AdminSchools() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb' }}>
-                {['Nome', 'CNPJ', 'Email', 'Status', 'Ações'].map(h => (
+                {['Nome', 'CNPJ', 'Email', 'Status', 'Limite Prof.', 'Ações'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {schools.length === 0 ? (
-                <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhuma escola cadastrada.</td></tr>
+                <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhuma escola cadastrada.</td></tr>
               ) : schools.map(school => (
                 <tr key={school.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '14px 16px', fontWeight: '500', color: '#111827', fontSize: '14px' }}>{school.name}</td>
                   <td style={{ padding: '14px 16px', color: '#6b7280', fontSize: '14px' }}>{school.cnpj || '—'}</td>
                   <td style={{ padding: '14px 16px', color: '#6b7280', fontSize: '14px' }}>{school.email || '—'}</td>
                   <td style={{ padding: '14px 16px' }}><Badge type={school.status}>{school.status === 'active' ? 'Ativa' : school.status === 'blocked' ? 'Bloqueada' : 'Suspensa'}</Badge></td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>{school.max_professors || 30} prof.</td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => toggleStatus(school)}
@@ -136,6 +140,12 @@ export default function AdminSchools() {
                 <input type={type} style={inp} value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} />
               </div>
             ))}
+            <div>
+              <label style={lbl}>Limite de Professores</label>
+              <select style={inp} value={form.max_professors} onChange={e => setForm(p => ({ ...p, max_professors: e.target.value }))}>
+                {[30, 35, 40, 45, 50, 55, 60].map(n => <option key={n} value={n}>{n} professores</option>)}
+              </select>
+            </div>
           </div>
 
           <div style={{ width: '1px', backgroundColor: '#e5e7eb' }}></div>

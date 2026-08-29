@@ -3,34 +3,32 @@ import { supabase } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Search, User, Trash2, FileSpreadsheet, X, Loader2, Upload, Eye } from 'lucide-react';
+import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 export default function GestorAlunos() {
   const [alunos, setAlunos] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [schoolId, setSchoolId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
-  
+
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', enrollment: '', shift: 'Manhã', class_id: '' });
+  const [form, setForm] = useState({ name: '', enrollment: '', shift: 'Manhã', class_id: '', guardian_name: '', guardian_phone: '' });
 
   // Importação
   const fileInputRef = useRef(null);
   const [alunosParaImportar, setAlunosParaImportar] = useState([]);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [turmaImportacao, setTurmaImportacao] = useState('');
   const [importing, setImporting] = useState(false);
 
-  // Detalhes do Aluno (Histórico 15 dias)
+  // Histórico
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedAluno, setSelectedAluno] = useState(null);
   const [alunoHistory, setAlunoHistory] = useState({ recent: [], old_count: 0, loading: false });
 
-  useEffect(() => { 
-    fetchData(); 
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -40,21 +38,21 @@ export default function GestorAlunos() {
     const { data: currentProfile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
     if (!currentProfile?.school_id) return;
 
-    // Buscar turmas
-    const { data: classData } = await supabase.from('classes').select('*').eq('school_id', currentProfile.school_id);
+    setSchoolId(currentProfile.school_id);
+
+    const { data: classData } = await supabase.from('classes').select('*').eq('school_id', currentProfile.school_id).order('name');
     setClasses(classData || []);
 
-    // Buscar alunos
-    const { data: studentData } = await supabase.from('students')
-      .select('*, class_students(class_id)')
+    const { data: studentData } = await supabase
+      .from('students')
+      .select('*, class_students(class_id, classes(name))')
       .eq('school_id', currentProfile.school_id)
       .order('name');
-    
-    // Mapear turma atual
+
     const mapped = (studentData || []).map(s => {
       const classId = s.class_students?.[0]?.class_id;
-      const t = classData?.find(c => c.id === classId);
-      return { ...s, turma_nome: t ? t.name : 'Sem Turma' };
+      const t = (classData || []).find(c => c.id === classId);
+      return { ...s, turma_nome: t ? t.name : (s.class_students?.[0]?.classes?.name || 'Sem Turma') };
     });
 
     setAlunos(mapped);
@@ -66,25 +64,24 @@ export default function GestorAlunos() {
       return showToast('Nome e Turma são obrigatórios.', 'error');
     }
     setSaving(true);
-    
-    const { data: userData } = await supabase.auth.getUser();
-    const { data: currentProfile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
 
     const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
-      school_id: currentProfile.school_id,
+      school_id: schoolId,
       name: form.name,
       enrollment: form.enrollment,
       shift: form.shift,
+      guardian_name: form.guardian_name,
+      guardian_phone: form.guardian_phone,
       status: 'active'
     }]).select().single();
 
     if (studentError) {
       showToast('Erro ao criar aluno: ' + studentError.message, 'error');
     } else {
-      await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: form.class_id }]);
+      await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: form.class_id, school_id: schoolId }]);
       showToast('Aluno cadastrado com sucesso!');
       setShowModal(false);
-      setForm({ name: '', enrollment: '', shift: 'Manhã', class_id: '' });
+      setForm({ name: '', enrollment: '', shift: 'Manhã', class_id: '', guardian_name: '', guardian_phone: '' });
       fetchData();
     }
     setSaving(false);
@@ -103,21 +100,60 @@ export default function GestorAlunos() {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-        let alunosTemp = [];
-        // Busca simples assumindo Nome na coluna 1 (índice 0) ou algo parecido.
-        // Tentar detectar cabeçalho
-        let headerRowIndex = data.findIndex(row => row.some(cell => typeof cell === 'string' && cell.toLowerCase().includes('nome')));
-        if (headerRowIndex === -1) headerRowIndex = 0; // fallback
+        // Detectar cabeçalho automaticamente (igual ao Atheneum Lib)
+        let headerRowIndex = -1;
+        let colNome = -1, colRA = -1, colDigRA = -1, colUF = -1, colNascimento = -1, colTurma = -1, colResponsavel = -1, colTelefone = -1;
 
-        const colNome = data[headerRowIndex].findIndex(c => typeof c === 'string' && c.toLowerCase().includes('nome'));
-        let colMatricula = data[headerRowIndex].findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('mat') || c.toLowerCase().includes('ra')));
-        
-        alunosTemp = data.slice(headerRowIndex + 1)
-          .filter(row => row[colNome >= 0 ? colNome : 0]) 
-          .map(row => ({
-            nome: row[colNome >= 0 ? colNome : 0]?.toString().trim() || '',
-            matricula: colMatricula >= 0 ? (row[colMatricula]?.toString().trim() || 'SEM_RA') : 'SEM_RA',
+        for (let i = 0; i < Math.min(20, data.length); i++) {
+          const row = data[i];
+          if (!Array.isArray(row)) continue;
+          const idxNome = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('nome'));
+          if (idxNome !== -1) {
+            headerRowIndex = i;
+            colNome = idxNome;
+            colRA = row.findIndex(c => typeof c === 'string' && c.trim().toUpperCase() === 'RA');
+            colDigRA = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('dig'));
+            colUF = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('uf'));
+            colNascimento = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('nasc'));
+            colTurma = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('turma') || c.toLowerCase().includes('série') || c.toLowerCase().includes('serie')));
+            colResponsavel = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('responsável') || c.toLowerCase().includes('responsavel')));
+            colTelefone = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('telefone') || c.toLowerCase().includes('celular') || c.toLowerCase().includes('whatsapp') || c.toLowerCase().includes('fone')));
+            break;
+          }
+        }
+
+        let alunosTemp = [];
+
+        if (headerRowIndex !== -1 && colNome !== -1) {
+          alunosTemp = data.slice(headerRowIndex + 1)
+            .filter(row => row[colNome])
+            .map(row => {
+              let matricula = '';
+              if (colRA !== -1 && row[colRA] !== undefined) {
+                matricula += row[colRA].toString().trim();
+                if (colDigRA !== -1 && row[colDigRA] !== undefined) matricula += row[colDigRA].toString().trim();
+                if (colUF !== -1 && row[colUF] !== undefined) matricula += row[colUF].toString().trim();
+              } else {
+                matricula = (row[colNome + 1] || '').toString().trim();
+              }
+              return {
+                nome: row[colNome]?.toString().trim() || '',
+                matricula: matricula || 'SEM_RA',
+                turma: colTurma !== -1 ? (row[colTurma]?.toString().trim() || '') : '',
+                guardian_name: colResponsavel !== -1 ? (row[colResponsavel]?.toString().trim() || '') : '',
+                guardian_phone: colTelefone !== -1 ? (row[colTelefone]?.toString().trim() || '') : '',
+              };
+            });
+        } else {
+          // Fallback simples
+          alunosTemp = data.slice(1).filter(row => row[0]).map(row => ({
+            nome: row[0]?.toString().trim() || '',
+            matricula: row[1]?.toString().trim() || 'SEM_RA',
+            turma: row[2]?.toString().trim() || '',
+            guardian_name: row[3]?.toString().trim() || '',
+            guardian_phone: row[4]?.toString().trim() || '',
           }));
+        }
 
         setAlunosParaImportar(alunosTemp);
         setShowImportModal(true);
@@ -131,42 +167,75 @@ export default function GestorAlunos() {
     reader.readAsBinaryString(file);
   };
 
+  // Criar ou reutilizar turma por nome
+  const findOrCreateClass = async (className) => {
+    if (!className || !className.trim()) return null;
+    const name = className.trim();
+
+    // Buscar se já existe
+    const { data: existing } = await supabase.from('classes').select('id').eq('school_id', schoolId).eq('name', name).maybeSingle();
+    if (existing) return existing.id;
+
+    // Criar nova turma
+    const { data: created, error } = await supabase.from('classes').insert([{ school_id: schoolId, name, active: true }]).select('id').single();
+    if (error) {
+      // Pode ter sido criada por outro processo (race condition) — buscar novamente
+      const { data: retry } = await supabase.from('classes').select('id').eq('school_id', schoolId).eq('name', name).maybeSingle();
+      return retry?.id || null;
+    }
+    return created.id;
+  };
+
   const handleConfirmImport = async () => {
-    if (alunosParaImportar.length === 0 || !turmaImportacao) {
-      return showToast('Selecione uma turma para os alunos.', 'error');
+    if (alunosParaImportar.length === 0) return showToast('Nenhum aluno para importar.', 'error');
+
+    // Verificar se algum aluno tem turma indefinida e não há campo de turma preenchido
+    const semTurma = alunosParaImportar.filter(a => !a.turma || !a.turma.trim());
+    if (semTurma.length > 0) {
+      return showToast(`${semTurma.length} aluno(s) sem turma definida. Verifique a planilha.`, 'error');
     }
 
     setImporting(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const { data: currentProfile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
+      let importados = 0;
+      let ignorados = 0;
 
-      const studentsToInsert = alunosParaImportar.map(a => ({
-        school_id: currentProfile.school_id,
-        name: a.nome,
-        enrollment: a.matricula,
-        shift: 'Manhã',
-        status: 'active'
-      }));
+      for (const aluno of alunosParaImportar) {
+        // Verificar duplicata (mesmo nome + escola)
+        const { data: existing } = await supabase.from('students').select('id').eq('school_id', schoolId).eq('name', aluno.nome).maybeSingle();
+        if (existing) { ignorados++; continue; }
 
-      const { data: inserted, error: insertError } = await supabase.from('students').insert(studentsToInsert).select();
-      if (insertError) throw insertError;
+        // Criar/obter turma
+        const classId = await findOrCreateClass(aluno.turma);
 
-      const relations = inserted.map(s => ({
-        student_id: s.id,
-        class_id: turmaImportacao
-      }));
+        // Criar aluno
+        const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
+          school_id: schoolId,
+          name: aluno.nome,
+          enrollment: aluno.matricula,
+          guardian_name: aluno.guardian_name || null,
+          guardian_phone: aluno.guardian_phone || null,
+          shift: 'Manhã',
+          status: 'active'
+        }]).select().single();
 
-      await supabase.from('class_students').insert(relations);
+        if (studentError) { console.error('Erro ao inserir aluno:', studentError); continue; }
 
-      showToast(`${alunosParaImportar.length} alunos importados com sucesso!`);
+        // Vincular à turma
+        if (classId) {
+          await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: classId, school_id: schoolId }]);
+        }
+
+        importados++;
+      }
+
+      showToast(`${importados} aluno(s) importado(s) com sucesso! ${ignorados > 0 ? `(${ignorados} já existiam e foram ignorados)` : ''}`);
       setShowImportModal(false);
       setAlunosParaImportar([]);
-      setTurmaImportacao('');
       fetchData();
     } catch (error) {
       console.error(error);
-      showToast('Erro ao importar alunos.', 'error');
+      showToast('Erro ao importar alunos: ' + error.message, 'error');
     } finally {
       setImporting(false);
     }
@@ -177,29 +246,20 @@ export default function GestorAlunos() {
     setShowHistoryModal(true);
     setAlunoHistory({ recent: [], old_count: 0, loading: true });
 
-    // Buscar ocorrências do aluno
     const { data: incidents } = await supabase.from('incidents')
       .select('*, incident_types(name)')
       .eq('student_id', aluno.id)
       .order('incident_date', { ascending: false });
-    
+
     if (incidents) {
       const fifteenDaysAgo = new Date();
       fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-
-      const recent = [];
-      let oldCount = 0;
-
+      const recent = [], old = [];
       incidents.forEach(inc => {
-        const d = new Date(inc.incident_date);
-        if (d >= fifteenDaysAgo) {
-          recent.push(inc);
-        } else {
-          oldCount++;
-        }
+        if (new Date(inc.incident_date) >= fifteenDaysAgo) recent.push(inc);
+        else old.push(inc);
       });
-
-      setAlunoHistory({ recent, old_count: oldCount, loading: false });
+      setAlunoHistory({ recent, old_count: old.length, loading: false });
     } else {
       setAlunoHistory({ recent: [], old_count: 0, loading: false });
     }
@@ -214,24 +274,21 @@ export default function GestorAlunos() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', color: '#111827', margin: 0 }}>Gestão de Alunos</h1>
-        
         <div style={{ display: 'flex', gap: '10px' }}>
           <input type="file" ref={fileInputRef} onChange={handleFileImport} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
           <button onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', padding: '10px 16px', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
             <FileSpreadsheet size={18} /> Importar Planilha
           </button>
-          
           <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
             <Plus size={18} /> Novo Aluno
           </button>
         </div>
       </div>
 
-      <div style={{ position: 'relative', marginBottom: '1.5rem', width: '300px' }}>
+      <div style={{ position: 'relative', marginBottom: '1.5rem', maxWidth: '320px' }}>
         <Search style={{ position: 'absolute', left: '12px', top: '10px', color: '#6b7280' }} size={20} />
         <input type="text" placeholder="Buscar por nome..." value={busca} onChange={e => setBusca(e.target.value)}
-          style={{ width: '100%', padding: '10px 10px 10px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
-        />
+          style={{ width: '100%', padding: '10px 10px 10px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }} />
       </div>
 
       <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
@@ -241,23 +298,35 @@ export default function GestorAlunos() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb' }}>
-                {['Nome', 'Matrícula', 'Turma', 'Status', 'Ações'].map(h => (
+                {['Nome', 'Matrícula', 'Turma', 'Responsável', 'Status', 'Ações'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhum aluno encontrado.</td></tr>
+                <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhum aluno encontrado.</td></tr>
               ) : filtered.map(aluno => (
                 <tr key={aluno.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: '500', color: '#111827', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={16} color="#6b7280"/></div>
-                    {aluno.name}
+                  <td style={{ padding: '14px 16px', fontSize: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={16} color="#6b7280" /></div>
+                      <span style={{ fontWeight: '500', color: '#111827' }}>{aluno.name}</span>
+                    </div>
                   </td>
                   <td style={{ padding: '14px 16px', color: '#6b7280', fontSize: '14px' }}>{aluno.enrollment || '—'}</td>
-                  <td style={{ padding: '14px 16px', color: '#6b7280', fontSize: '14px' }}>{aluno.turma_nome}</td>
-                  <td style={{ padding: '14px 16px' }}><Badge type={aluno.status}>{aluno.status === 'active' ? 'Ativo' : 'Inativo'}</Badge></td>
+                  <td style={{ padding: '14px 16px', color: '#374151', fontSize: '14px' }}>{aluno.turma_nome}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                    {aluno.guardian_name ? (
+                      <div>
+                        <div style={{ fontWeight: '500', color: '#374151' }}>{aluno.guardian_name}</div>
+                        {aluno.guardian_phone && (
+                          <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={11} />{aluno.guardian_phone}</div>
+                        )}
+                      </div>
+                    ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '14px 16px' }}><Badge type={aluno.status || 'active'}>{aluno.status === 'active' ? 'Ativo' : 'Inativo'}</Badge></td>
                   <td style={{ padding: '14px 16px' }}>
                     <button onClick={() => openHistory(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
                       <Eye size={14} /> Histórico
@@ -272,63 +341,56 @@ export default function GestorAlunos() {
 
       {/* Modal Novo Aluno */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Cadastrar Aluno">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label style={lbl}>Nome Completo *</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div><label style={lbl}>Nome Completo *</label>
             <input type="text" style={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
           </div>
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={lbl}>Matrícula (RA)</label>
+          <div style={{ display: 'flex', gap: '14px' }}>
+            <div style={{ flex: 1 }}><label style={lbl}>Matrícula (RA)</label>
               <input type="text" style={inp} value={form.enrollment} onChange={e => setForm(p => ({ ...p, enrollment: e.target.value }))} />
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={lbl}>Turno</label>
+            <div style={{ flex: 1 }}><label style={lbl}>Turno</label>
               <select style={inp} value={form.shift} onChange={e => setForm(p => ({ ...p, shift: e.target.value }))}>
-                <option value="Manhã">Manhã</option>
-                <option value="Tarde">Tarde</option>
-                <option value="Noite">Noite</option>
+                <option>Manhã</option><option>Tarde</option><option>Noite</option>
               </select>
             </div>
           </div>
-          <div>
-            <label style={lbl}>Turma *</label>
+          <div><label style={lbl}>Turma *</label>
             <select style={inp} value={form.class_id} onChange={e => setForm(p => ({ ...p, class_id: e.target.value }))}>
               <option value="">Selecione uma turma...</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          
+          <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '4px 0' }} />
+          <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase' }}>Dados do Responsável</p>
+          <div><label style={lbl}>Nome do Responsável</label>
+            <input type="text" style={inp} placeholder="Nome do pai, mãe ou responsável" value={form.guardian_name} onChange={e => setForm(p => ({ ...p, guardian_name: e.target.value }))} />
+          </div>
+          <div><label style={lbl}>WhatsApp / Telefone do Responsável</label>
+            <input type="text" style={inp} placeholder="(11) 99999-9999" value={form.guardian_phone} onChange={e => setForm(p => ({ ...p, guardian_phone: e.target.value }))} />
+          </div>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
             <button onClick={() => setShowModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '10px 20px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {saving ? <Loader2 size={16} className="animar-giro" /> : null}
-              {saving ? 'Criando...' : 'Cadastrar'}
+              {saving ? <Loader2 size={16} className="animar-giro" /> : null}{saving ? 'Criando...' : 'Cadastrar'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal Importar */}
-      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Confirmar Importação" size="lg">
-        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', color: '#166534', fontSize: '14px' }}>
-          Foram detectados <strong>{alunosParaImportar.length} alunos</strong> na planilha. Para qual turma deseja importá-los?
-        </div>
-        
-        <div style={{ marginBottom: '16px' }}>
-          <label style={lbl}>Turma de Destino *</label>
-          <select style={inp} value={turmaImportacao} onChange={e => setTurmaImportacao(e.target.value)}>
-            <option value="">Selecione uma turma...</option>
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+      {/* Modal Importação */}
+      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title={`Confirmar Importação — ${alunosParaImportar.length} alunos`} size="lg">
+        <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#166534' }}>
+          <strong>Turmas identificadas automaticamente</strong> na planilha. Cada aluno será vinculado à sua turma, que será criada no sistema se ainda não existir. Alunos já cadastrados serão ignorados.
         </div>
 
-        <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+        <div style={{ maxHeight: '350px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', color: '#6b7280' }}>Nome</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', color: '#6b7280' }}>Matrícula</th>
+            <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f9fafb' }}>
+              <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                {['Nome', 'Matrícula', 'Turma', 'Responsável', 'Telefone'].map(h => (
+                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', color: '#6b7280' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -336,13 +398,18 @@ export default function GestorAlunos() {
                 <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 12px', fontSize: '13px' }}>{a.nome}</td>
                   <td style={{ padding: '8px 12px', fontSize: '13px', color: '#6b7280' }}>{a.matricula}</td>
+                  <td style={{ padding: '8px 12px', fontSize: '13px' }}>
+                    {a.turma ? <span style={{ backgroundColor: '#fdf2f2', color: '#9b1c26', padding: '2px 8px', borderRadius: '10px', fontWeight: '600', fontSize: '12px' }}>{a.turma}</span> : <span style={{ color: '#ef4444', fontSize: '12px' }}>⚠ Sem turma</span>}
+                  </td>
+                  <td style={{ padding: '8px 12px', fontSize: '13px', color: '#6b7280' }}>{a.guardian_name || '—'}</td>
+                  <td style={{ padding: '8px 12px', fontSize: '13px', color: '#6b7280' }}>{a.guardian_phone || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
           <button onClick={() => setShowImportModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
           <button onClick={handleConfirmImport} disabled={importing} style={{ padding: '10px 20px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {importing ? <Loader2 size={16} className="animar-giro" /> : <Upload size={16} />}
@@ -351,7 +418,7 @@ export default function GestorAlunos() {
         </div>
       </Modal>
 
-      {/* Modal Histórico (15 dias) */}
+      {/* Modal Histórico */}
       <Modal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} title={`Histórico: ${selectedAluno?.name}`}>
         {alunoHistory.loading ? (
           <div style={{ padding: '2rem', textAlign: 'center' }}><Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} /></div>
@@ -359,33 +426,44 @@ export default function GestorAlunos() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
               <div>
-                <div style={{ fontSize: '14px', color: '#6b7280' }}>Turma Atual</div>
+                <div style={{ fontSize: '13px', color: '#6b7280' }}>Turma</div>
                 <div style={{ fontWeight: '600' }}>{selectedAluno?.turma_nome}</div>
+                {selectedAluno?.guardian_name && (
+                  <div style={{ marginTop: '4px', fontSize: '13px', color: '#6b7280' }}>
+                    Resp: {selectedAluno.guardian_name} {selectedAluno.guardian_phone && `— ${selectedAluno.guardian_phone}`}
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '14px', color: '#6b7280' }}>Ocorrências Antigas (&gt;15 dias)</div>
-                <div style={{ fontWeight: 'bold', fontSize: '1.25rem', color: '#9b1c26' }}>{alunoHistory.old_count}</div>
+                <div style={{ fontSize: '13px', color: '#6b7280' }}>Ocorrências &gt; 15 dias</div>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', color: '#9b1c26' }}>{alunoHistory.old_count}</div>
               </div>
             </div>
-
-            <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '14px' }}>Ocorrências Recentes (Últimos 15 dias)</h4>
-            
+            <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '14px' }}>Últimos 15 dias</h4>
             {alunoHistory.recent.length === 0 ? (
               <div style={{ padding: '20px', backgroundColor: '#f9fafb', borderRadius: '6px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-                O aluno não possui ocorrências nos últimos 15 dias.
+                Sem ocorrências nos últimos 15 dias.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
-                {alunoHistory.recent.map(inc => (
-                  <div key={inc.id} style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: '600', fontSize: '13px', color: '#111827' }}>{inc.incident_types?.name || 'Geral'}</span>
-                      <span style={{ fontSize: '12px', color: '#6b7280' }}>{new Date(inc.incident_date).toLocaleDateString('pt-BR')}</span>
+                {alunoHistory.recent.map(inc => {
+                  const types = inc.incident_types_list || [];
+                  return (
+                    <div key={inc.id} style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {types.length > 0 ? types.map((t, i) => (
+                            <span key={i} style={{ backgroundColor: '#fef2f2', color: '#991b1b', borderRadius: '20px', padding: '2px 8px', fontSize: '12px', fontWeight: '600' }}>{t.label}</span>
+                          )) : <span style={{ fontWeight: '600', fontSize: '13px', color: '#111827' }}>{inc.description || 'Ocorrência'}</span>}
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{new Date(inc.incident_date).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                      {inc.subject && <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#6b7280' }}>Disciplina: {inc.subject}</p>}
+                      {inc.outros_description && <p style={{ margin: 0, fontSize: '13px', color: '#4b5563', fontStyle: 'italic' }}>{inc.outros_description}</p>}
+                      <div style={{ marginTop: '8px' }}><Badge type={inc.status}>{inc.status}</Badge></div>
                     </div>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#4b5563' }}>{inc.description}</p>
-                    <div style={{ marginTop: '8px' }}><Badge type={inc.status}>{inc.status}</Badge></div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

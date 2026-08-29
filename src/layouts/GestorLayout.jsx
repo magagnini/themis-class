@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, AlertTriangle, Users, GraduationCap, BookOpen,
-  Settings, LogOut, Bell, MessageSquare, PlusCircle, BarChart3, Tag
+  Settings, LogOut, MessageSquare, FilePen, BarChart3
 } from 'lucide-react';
 
 export default function GestorLayout() {
@@ -17,11 +17,9 @@ export default function GestorLayout() {
   const menuItems = [
     { path: '/gestor', label: 'Dashboard', icon: <LayoutDashboard size={19} /> },
     { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={19} /> },
-    { path: '/gestor/nova-ocorrencia', label: 'Nova Ocorrência', icon: <PlusCircle size={19} /> },
     { path: '/gestor/alunos', label: 'Alunos', icon: <Users size={19} /> },
     { path: '/gestor/professores', label: 'Professores', icon: <GraduationCap size={19} /> },
     { path: '/gestor/turmas', label: 'Turmas', icon: <BookOpen size={19} /> },
-    { path: '/gestor/tipos-ocorrencia', label: 'Tipos de Ocorrência', icon: <Tag size={19} /> },
     { path: '/gestor/comunicacoes', label: 'Comunicações', icon: <MessageSquare size={19} /> },
     { path: '/gestor/relatorios', label: 'Relatórios', icon: <BarChart3 size={19} /> },
     { path: '/gestor/configuracoes', label: 'Configurações', icon: <Settings size={19} /> },

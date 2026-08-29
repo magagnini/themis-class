@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { LayoutDashboard, PlusCircle, AlertTriangle, Users, LogOut } from 'lucide-react';
+import { LayoutDashboard, FilePen, List, Users, LogOut } from 'lucide-react';
 
 export default function ProfessorLayout() {
   const location = useLocation();
@@ -13,8 +13,8 @@ export default function ProfessorLayout() {
 
   const menuItems = [
     { path: '/professor', label: 'Início', icon: <LayoutDashboard size={19} /> },
-    { path: '/professor/nova-ocorrencia', label: 'Nova Ocorrência', icon: <PlusCircle size={19} /> },
-    { path: '/professor/ocorrencias', label: 'Minhas Ocorrências', icon: <AlertTriangle size={19} /> },
+    { path: '/professor/nova-ocorrencia', label: 'FAZER OC', icon: <FilePen size={19} /> },
+    { path: '/professor/ocorrencias', label: 'Minhas Ocorrências', icon: <List size={19} /> },
     { path: '/professor/alunos', label: 'Alunos', icon: <Users size={19} /> },
   ];
 

@@ -20,6 +20,7 @@ export default function FazerOC() {
   const [schoolId, setSchoolId] = useState(null);
   const [teacherName, setTeacherName] = useState('');
   const [students, setStudents] = useState([]);
+  const [hasMinRequirements, setHasMinRequirements] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -53,6 +54,13 @@ export default function FazerOC() {
     setSchoolId(profile.school_id);
     setTeacherName(profile.name || 'Professor');
 
+    // Buscar contagem de professores cadastrados na escola
+    const { count: profCount, error: profError } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', profile.school_id)
+      .eq('role', 'professor');
+
     const { data: studentsData } = await supabase
       .from('students')
       .select('id, name, guardian_name, guardian_phone, class_students(class_id, classes(name))')
@@ -61,8 +69,12 @@ export default function FazerOC() {
       .order('name');
 
     setStudents(studentsData || []);
+    
+    // Armazenar quantidade de professores cadastrados
+    setHasMinRequirements((studentsData || []).length > 0 && (profCount || 0) > 0);
     setLoading(false);
   };
+
 
   const toggleType = (typeId) => {
     setSelectedTypes(prev => {
@@ -188,13 +200,13 @@ export default function FazerOC() {
     </div>
   );
 
-  if (students.length === 0) return (
+  if (!hasMinRequirements) return (
     <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
-      <AlertCircle size={64} color="#9b1c26" style={{ marginBottom: '16px' }} />
+      <AlertCircle size={64} color="#9b1c26" style={{ marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
       <h2 style={{ color: '#111827', marginBottom: '8px' }}>Não é possível registrar ocorrências ainda</h2>
       <p style={{ color: '#6b7280', lineHeight: '1.6' }}>
-        Para registrar uma ocorrência, é necessário que existam <strong>alunos cadastrados</strong> na escola.
-        <br />Peça ao gestor para cadastrar os alunos primeiro.
+        Para registrar uma ocorrência, é necessário que existam <strong>pelo menos 1 professor</strong> e <strong>pelo menos 1 aluno</strong> cadastrados na escola.
+        <br />Peça ao gestor para cadastrar os professores e alunos primeiro.
       </p>
     </div>
   );

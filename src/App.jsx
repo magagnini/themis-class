@@ -10,6 +10,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminSchools from './pages/admin/Schools';
 import AdminUsers from './pages/admin/Users';
 import AdminSchoolDetails from './pages/admin/SchoolDetails';
+import AdminOcorrencias from './pages/admin/Ocorrencias';
 import GestorLayout from './layouts/GestorLayout';
 import GestorDashboard from './pages/gestor/Dashboard';
 import Ocorrencias from './pages/gestor/Ocorrencias';
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="escolas" element={<AdminSchools />} />
           <Route path="escolas/:id" element={<AdminSchoolDetails />} />
           <Route path="usuarios" element={<AdminUsers />} />
+          <Route path="ocorrencias" element={<AdminOcorrencias />} />
           <Route path="configuracoes" element={<div>Configurações da Plataforma em breve</div>} />
         </Route>
         

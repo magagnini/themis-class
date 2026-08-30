@@ -72,20 +72,22 @@ export default function GestorAlunos() {
     setLoading(false);
   };
 
+  const shiftToDb = { 'Manhã': 'morning', 'Tarde': 'afternoon', 'Noite': 'night' };
+
   const handleSave = async () => {
     if (!form.name.trim() || !form.turma_texto.trim()) {
       return showToast('Nome e Turma são obrigatórios.', 'error');
     }
     setSaving(true);
 
-    // Criar/obter turma com busca case-insensitive
+    // Criar/obter turma com normalização
     const classId = await findOrCreateClass(form.turma_texto.trim());
 
     const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
       school_id: schoolId,
       name: form.name,
       enrollment: form.enrollment,
-      shift: form.shift,
+      shift: shiftToDb[form.shift] || 'morning',
       guardian_name: form.guardian_name,
       guardian_phone: formatBrazilPhone(form.guardian_phone),
       status: 'active'
@@ -185,32 +187,45 @@ export default function GestorAlunos() {
     reader.readAsBinaryString(file);
   };
 
-  // Criar ou reutilizar turma por nome — case insensitive
+  // Normalizar nome de turma: remove º/°, espaços extras, deixa MAIÚSCULO para comparação
+  const normalizeClassName = (name) => {
+    if (!name) return '';
+    return name
+      .trim()
+      .replace(/[°º]/g, '')      // Remove graus ordinais
+      .replace(/\s+/g, ' ')      // Colapsa espaços múltiplos
+      .trim()
+      .toUpperCase();
+  };
+
+  // Criar ou reutilizar turma por nome — case insensitive com normalização de º/°
   const findOrCreateClass = async (className) => {
     if (!className || !className.trim()) return null;
-    const name = className.trim();
+    const nameNorm = normalizeClassName(className);
 
-    // Buscar turma com nome case-insensitive
-    const { data: existing } = await supabase
+    // Buscar TODAS as turmas da escola para comparar com normalização local
+    const { data: allClasses } = await supabase
       .from('classes')
       .select('id, name')
-      .eq('school_id', schoolId)
-      .ilike('name', name)
-      .maybeSingle();
+      .eq('school_id', schoolId);
 
-    if (existing) return existing.id;
+    if (allClasses) {
+      const match = allClasses.find(c => normalizeClassName(c.name) === nameNorm);
+      if (match) return match.id;
+    }
 
-    // Criar nova turma com nome normalizado (como foi digitado pelo primeiro a criar)
+    // Criar nova turma preservando o nome original como digitado
     const { data: created, error } = await supabase
       .from('classes')
-      .insert([{ school_id: schoolId, name: name, active: true }])
+      .insert([{ school_id: schoolId, name: className.trim(), active: true }])
       .select('id')
       .single();
 
     if (error) {
       // Race condition: buscar novamente
-      const { data: retry } = await supabase.from('classes').select('id').eq('school_id', schoolId).ilike('name', name).maybeSingle();
-      return retry?.id || null;
+      const { data: allClasses2 } = await supabase.from('classes').select('id, name').eq('school_id', schoolId);
+      const match2 = allClasses2?.find(c => normalizeClassName(c.name) === nameNorm);
+      return match2?.id || null;
     }
     return created.id;
   };
@@ -244,7 +259,7 @@ export default function GestorAlunos() {
           enrollment: aluno.matricula,
           guardian_name: aluno.guardian_name || null,
           guardian_phone: formatBrazilPhone(aluno.guardian_phone),
-          shift: 'Manhã',
+          shift: 'morning',
           status: 'active'
         }]).select().single();
 

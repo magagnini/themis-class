@@ -3,24 +3,15 @@ import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { CheckSquare, Square, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 
-const INCIDENT_TYPES_DEFAULT = [
-  { id: 'celular', label: 'Uso indevido de celular', msg: 'recebeu uma ocorrência referente a uso indevido de celular durante a aula' },
-  { id: 'tarefas', label: 'Não realizou as tarefas', msg: 'não realizou as atividades/tarefas solicitadas' },
-  { id: 'atraso', label: 'Atraso', msg: 'chegou após o início da aula' },
-  { id: 'material', label: 'Falta de material escolar', msg: 'veio à aula sem os materiais necessários' },
-  { id: 'conversas', label: 'Conversas excessivas durante a aula', msg: 'apresentou conversas excessivas durante a aula, prejudicando o andamento' },
-  { id: 'desrespeito_prof', label: 'Desrespeito ao professor', msg: 'apresentou comportamento desrespeitoso ao professor' },
-  { id: 'desrespeito_col', label: 'Desrespeito aos colegas', msg: 'apresentou comportamento desrespeitoso com os colegas' },
-  { id: 'comportamento', label: 'Comportamento inadequado', msg: 'apresentou comportamento inadequado para o ambiente escolar' },
-  { id: 'atividades', label: 'Não participou das atividades', msg: 'se recusou ou se omitiu das atividades propostas' },
-  { id: 'outros', label: 'Outros', msg: '' },
-];
-
 export default function FazerOC() {
   const [schoolId, setSchoolId] = useState(null);
+  const [teacherId, setTeacherId] = useState(null);
   const [teacherName, setTeacherName] = useState('');
+  const [myRole, setMyRole] = useState(null);
   const [professorsList, setProfessorsList] = useState([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [students, setStudents] = useState([]);
+  const [incidentTypes, setIncidentTypes] = useState([]);
   const [hasMinRequirements, setHasMinRequirements] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,24 +37,27 @@ export default function FazerOC() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('school_id, name')
+      .select('school_id, name, role, id')
       .eq('id', userData.user.id)
       .single();
 
     setSchoolId(profile.school_id);
-    const isGestorOrAdmin = profile.role === 'gestor' || profile.role === 'admin';
-    setTeacherName(profile.name || (isGestorOrAdmin ? 'Gestor' : 'Professor'));
+    setTeacherId(profile.id);
+    setMyRole(profile.role);
+    setTeacherName(profile.name || 'Professor');
 
-    // Buscar professores da escola para permitir seleção caso seja gestor
-    const { data: profsData, count: profCount } = await supabase
-      .from('profiles')
-      .select('id, name', { count: 'exact' })
-      .eq('school_id', profile.school_id)
-      .eq('role', 'professor')
-      .order('name');
+    // Buscar professores da escola para permitir seleção caso seja gestor/admin
+    if (profile.role === 'gestor' || profile.role === 'admin') {
+      const { data: profsData } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .eq('school_id', profile.school_id)
+        .eq('role', 'professor')
+        .order('name');
+      setProfessorsList(profsData || []);
+    }
 
-    setProfessorsList(profsData || []);
-
+    // Buscar alunos
     const { data: studentsData } = await supabase
       .from('students')
       .select('id, name, guardian_name, guardian_phone, class_students(class_id, classes(name))')
@@ -72,13 +66,20 @@ export default function FazerOC() {
       .order('name');
 
     setStudents(studentsData || []);
-    
-    // Regra: precisa ter pelo menos 1 aluno cadastrado
-    // e caso seja professor, precisa estar logado; se for gestor, pode registrar
     setHasMinRequirements((studentsData || []).length > 0);
+
+    // Buscar tipos de ocorrência DINAMICAMENTE (globais + da escola)
+    const { data: typesData } = await supabase
+      .from('incident_types')
+      .select('id, name, school_id, is_default')
+      .or(`school_id.is.null,school_id.eq.${profile.school_id}`)
+      .eq('active', true)
+      .order('is_default', { ascending: false })
+      .order('name');
+
+    setIncidentTypes(typesData || []);
     setLoading(false);
   };
-
 
   const toggleType = (typeId) => {
     setSelectedTypes(prev => {
@@ -91,25 +92,38 @@ export default function FazerOC() {
     });
   };
 
+  const getOutrosType = () => incidentTypes.find(t => t.name.toLowerCase() === 'outros');
+
   const handleSubmit = async () => {
     if (!form.student_id) return showToast('Selecione um aluno.', 'error');
     if (!form.date) return showToast('Informe a data.', 'error');
     if (!form.time) return showToast('Informe o horário.', 'error');
     if (!form.subject.trim()) return showToast('Informe a disciplina.', 'error');
     if (selectedTypes.length === 0) return showToast('Selecione pelo menos 1 ocorrência.', 'error');
-    if (selectedTypes.includes('outros') && !outrosText.trim()) return showToast('Descreva a ocorrência "Outros".', 'error');
-    if (outrosText.length > 500) return showToast('O campo "Outros" ultrapassou 500 caracteres.', 'error');
+
+    const outrosType = getOutrosType();
+    const hasOutros = outrosType && selectedTypes.includes(outrosType.id);
+    if (hasOutros && !outrosText.trim()) return showToast('Descreva a ocorrência "Outros".', 'error');
 
     setSaving(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
       const student = students.find(s => s.id === form.student_id);
+      const classId = student?.class_students?.[0]?.class_id || null;
       const className = student?.class_students?.[0]?.classes?.name || '';
 
+      // Montar lista de tipos selecionados com labels
       const typesListForDB = selectedTypes.map(id => {
-        const t = INCIDENT_TYPES_DEFAULT.find(x => x.id === id);
-        return { id, label: t?.label || id };
+        const t = incidentTypes.find(x => x.id === id);
+        return { id, label: t?.name || id };
       });
+
+      // Professor que irá assinar a ocorrência
+      const finalTeacherId = (myRole === 'gestor' || myRole === 'admin') && selectedTeacherId
+        ? selectedTeacherId
+        : teacherId;
+      const finalTeacherName = (myRole === 'gestor' || myRole === 'admin') && selectedTeacherId
+        ? professorsList.find(p => p.id === selectedTeacherId)?.name || teacherName
+        : teacherName;
 
       // 1. Criar o incident
       const { data: incident, error: incidentError } = await supabase
@@ -117,13 +131,14 @@ export default function FazerOC() {
         .insert({
           school_id: schoolId,
           student_id: form.student_id,
-          teacher_id: userData.user.id,
-          incident_date: new Date(form.date + 'T' + form.time).toISOString(),
+          teacher_id: finalTeacherId,
+          class_id: classId,
+          incident_date: new Date(form.date + 'T' + (form.time || '12:00') + ':00').toISOString(),
           incident_date_only: form.date,
           incident_time: form.time,
           subject: form.subject,
           incident_types_list: typesListForDB,
-          outros_description: selectedTypes.includes('outros') ? outrosText : null,
+          outros_description: hasOutros ? outrosText : null,
           status: 'pending',
           severity: 'low',
           description: typesListForDB.map(t => t.label).join(', '),
@@ -135,39 +150,35 @@ export default function FazerOC() {
 
       // 2. Criar a comunicação para o gestor
       const guardianPhone = student?.guardian_phone || '';
-      const typesLabels = typesListForDB.map(t => t.label).join(', ');
       const dateFormatted = new Date(form.date + 'T12:00:00').toLocaleDateString('pt-BR');
 
-      const { error: commError } = await supabase
-        .from('communications')
-        .insert({
-          school_id: schoolId,
-          incident_id: incident.id,
-          student_id: form.student_id,
-          channel: 'whatsapp',
-          recipient_name: student?.guardian_name || 'Responsável',
-          recipient_contact: guardianPhone,
-          status: 'pending',
-          // campos extras
-          incident_id_ref: incident.id,
-          teacher_name: teacherName,
+      const { error: commError } = await supabase.from('communications').insert({
+        school_id: schoolId,
+        incident_id: incident.id,
+        student_id: form.student_id,
+        channel: 'whatsapp',
+        recipient_name: student?.guardian_name || 'Responsável',
+        recipient_contact: guardianPhone,
+        status: 'pending',
+        teacher_name: finalTeacherName,
+        subject: form.subject,
+        incident_time: form.time,
+        incident_types_list: typesListForDB,
+        outros_description: hasOutros ? outrosText : null,
+        student_name: student?.name || '',
+        guardian_phone: guardianPhone,
+        class_name: className,
+        message: buildMessage({
+          studentName: student?.name || '',
+          types: typesListForDB,
           subject: form.subject,
-          incident_time: form.time,
-          incident_types_list: typesListForDB,
-          outros_description: selectedTypes.includes('outros') ? outrosText : null,
-          student_name: student?.name || '',
-          guardian_phone: guardianPhone,
-          class_name: className,
-          message: buildMessage({
-            studentName: student?.name || '',
-            types: typesListForDB,
-            subject: form.subject,
-            date: dateFormatted,
-            time: form.time,
-            teacher: teacherName,
-            outrosText: selectedTypes.includes('outros') ? outrosText : null,
-          }),
-        });
+          date: dateFormatted,
+          time: form.time,
+          teacher: finalTeacherName,
+          outrosText: hasOutros ? outrosText : null,
+          outrosTypeId: outrosType?.id,
+        }),
+      });
 
       if (commError) console.error('Erro ao criar comunicação:', commError);
 
@@ -175,6 +186,7 @@ export default function FazerOC() {
       setForm({ student_id: '', date: new Date().toISOString().split('T')[0], time: '', subject: '' });
       setSelectedTypes([]);
       setOutrosText('');
+      setSelectedTeacherId('');
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       console.error(err);
@@ -184,9 +196,9 @@ export default function FazerOC() {
     }
   };
 
-  const buildMessage = ({ studentName, types, subject, date, time, teacher, outrosText }) => {
-    const hasOutros = types.some(t => t.id === 'outros');
-    const tiposNormais = types.filter(t => t.id !== 'outros').map(t => t.label).join(', ');
+  const buildMessage = ({ studentName, types, subject, date, time, teacher, outrosText, outrosTypeId }) => {
+    const hasOutros = outrosTypeId && types.some(t => t.id === outrosTypeId);
+    const tiposNormais = types.filter(t => t.id !== outrosTypeId).map(t => t.label).join(', ');
 
     if (hasOutros && tiposNormais.length === 0) {
       return `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência. Motivo: ${outrosText}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
@@ -197,6 +209,8 @@ export default function FazerOC() {
 
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', outline: 'none' };
   const lbl = { display: 'block', marginBottom: '6px', fontSize: '13px', color: '#374151', fontWeight: '600' };
+  const outrosType = getOutrosType();
+  const hasOutros = outrosType && selectedTypes.includes(outrosType.id);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
@@ -243,14 +257,14 @@ export default function FazerOC() {
           </select>
         </div>
 
-        {/* Professor (caso seja gestor e queira vincular a um professor específico) */}
-        {professorsList.length > 0 && (
+        {/* Professor Relator (caso seja gestor) */}
+        {(myRole === 'gestor' || myRole === 'admin') && (
           <div>
             <label style={lbl}>Professor Relator</label>
-            <select style={inp} value={teacherName} onChange={e => setTeacherName(e.target.value)}>
-              <option value="Gestão Escolar">Gestão Escolar</option>
+            <select style={inp} value={selectedTeacherId} onChange={e => setSelectedTeacherId(e.target.value)}>
+              <option value="">Gestão Escolar (eu mesmo)</option>
               {professorsList.map(p => (
-                <option key={p.id} value={p.name}>{p.name}</option>
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
@@ -261,7 +275,7 @@ export default function FazerOC() {
           <div>
             <label style={lbl}>2. Data da Ocorrência</label>
             <input type="date" style={inp} value={form.date}
-              min="2026-08-01" max="2028-12-31"
+              min="2020-01-01" max="2030-12-31"
               onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
           </div>
           <div>
@@ -277,36 +291,42 @@ export default function FazerOC() {
             value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
         </div>
 
-        {/* Tipos de Ocorrência */}
+        {/* Tipos de Ocorrência — DINÂMICO */}
         <div>
           <label style={lbl}>5. Selecionar Ocorrências (máx. 4)</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {INCIDENT_TYPES_DEFAULT.map(type => {
-              const isSelected = selectedTypes.includes(type.id);
-              const isDisabled = !isSelected && selectedTypes.length >= 4;
-              return (
-                <button
-                  key={type.id}
-                  onClick={() => !isDisabled && toggleType(type.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '12px 14px', border: `2px solid ${isSelected ? '#9b1c26' : '#e5e7eb'}`,
-                    borderRadius: '8px', background: isSelected ? '#fdf2f2' : '#fff',
-                    cursor: isDisabled ? 'not-allowed' : 'pointer', textAlign: 'left',
-                    opacity: isDisabled ? 0.45 : 1, transition: 'all 0.15s'
-                  }}
-                >
-                  {isSelected
-                    ? <CheckSquare size={20} color="#9b1c26" />
-                    : <Square size={20} color="#9ca3af" />}
-                  <span style={{ fontWeight: isSelected ? '600' : '400', color: isSelected ? '#7f1d1d' : '#374151', fontSize: '14px' }}>
-                    {type.label}
-                  </span>
-                  {type.id === 'outros' && <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>campo livre</span>}
-                </button>
-              );
-            })}
-          </div>
+          {incidentTypes.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '8px', fontSize: '14px' }}>
+              Nenhum tipo de ocorrência cadastrado. Peça ao gestor para cadastrar na aba <strong>Ocorrências</strong>.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {incidentTypes.map(type => {
+                const isSelected = selectedTypes.includes(type.id);
+                const isDisabled = !isSelected && selectedTypes.length >= 4;
+                return (
+                  <button
+                    key={type.id}
+                    onClick={() => !isDisabled && toggleType(type.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '12px 14px', border: `2px solid ${isSelected ? '#9b1c26' : '#e5e7eb'}`,
+                      borderRadius: '8px', background: isSelected ? '#fdf2f2' : '#fff',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer', textAlign: 'left',
+                      opacity: isDisabled ? 0.45 : 1, transition: 'all 0.15s'
+                    }}
+                  >
+                    {isSelected
+                      ? <CheckSquare size={20} color="#9b1c26" />
+                      : <Square size={20} color="#9ca3af" />}
+                    <span style={{ fontWeight: isSelected ? '600' : '400', color: isSelected ? '#7f1d1d' : '#374151', fontSize: '14px' }}>
+                      {type.name}
+                    </span>
+                    {type.name.toLowerCase() === 'outros' && <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>campo livre</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {selectedTypes.length > 0 && (
             <p style={{ marginTop: '8px', fontSize: '12px', color: '#9b1c26', fontWeight: '600' }}>
@@ -316,7 +336,7 @@ export default function FazerOC() {
         </div>
 
         {/* Campo "Outros" */}
-        {selectedTypes.includes('outros') && (
+        {hasOutros && (
           <div>
             <label style={lbl}>Descrição da ocorrência "Outros"</label>
             <textarea
@@ -343,12 +363,12 @@ export default function FazerOC() {
             opacity: saving ? 0.7 : 1, transition: 'opacity 0.15s'
           }}
         >
-          {saving ? <Loader2 size={20} className="animar-giro" /> : null}
+          {saving ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : null}
           {saving ? 'Registrando...' : 'Registrar Ocorrência'}
         </button>
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .animar-giro { animation: spin 1s linear infinite; }`}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

@@ -19,6 +19,7 @@ const INCIDENT_TYPES_DEFAULT = [
 export default function FazerOC() {
   const [schoolId, setSchoolId] = useState(null);
   const [teacherName, setTeacherName] = useState('');
+  const [professorsList, setProfessorsList] = useState([]);
   const [students, setStudents] = useState([]);
   const [hasMinRequirements, setHasMinRequirements] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -49,17 +50,19 @@ export default function FazerOC() {
       .eq('id', userData.user.id)
       .single();
 
-    if (!profile?.school_id) { setLoading(false); return; }
-
     setSchoolId(profile.school_id);
-    setTeacherName(profile.name || 'Professor');
+    const isGestorOrAdmin = profile.role === 'gestor' || profile.role === 'admin';
+    setTeacherName(profile.name || (isGestorOrAdmin ? 'Gestor' : 'Professor'));
 
-    // Buscar contagem de professores cadastrados na escola
-    const { count: profCount, error: profError } = await supabase
+    // Buscar professores da escola para permitir seleção caso seja gestor
+    const { data: profsData, count: profCount } = await supabase
       .from('profiles')
-      .select('*', { count: 'exact', head: true })
+      .select('id, name', { count: 'exact' })
       .eq('school_id', profile.school_id)
-      .eq('role', 'professor');
+      .eq('role', 'professor')
+      .order('name');
+
+    setProfessorsList(profsData || []);
 
     const { data: studentsData } = await supabase
       .from('students')
@@ -70,8 +73,9 @@ export default function FazerOC() {
 
     setStudents(studentsData || []);
     
-    // Armazenar quantidade de professores cadastrados
-    setHasMinRequirements((studentsData || []).length > 0 && (profCount || 0) > 0);
+    // Regra: precisa ter pelo menos 1 aluno cadastrado
+    // e caso seja professor, precisa estar logado; se for gestor, pode registrar
+    setHasMinRequirements((studentsData || []).length > 0);
     setLoading(false);
   };
 
@@ -238,6 +242,19 @@ export default function FazerOC() {
             ))}
           </select>
         </div>
+
+        {/* Professor (caso seja gestor e queira vincular a um professor específico) */}
+        {professorsList.length > 0 && (
+          <div>
+            <label style={lbl}>Professor Relator</label>
+            <select style={inp} value={teacherName} onChange={e => setTeacherName(e.target.value)}>
+              <option value="Gestão Escolar">Gestão Escolar</option>
+              {professorsList.map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Data + Horário */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

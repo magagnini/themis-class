@@ -6,6 +6,19 @@ import { showToast } from '../../components/ui/Toast';
 import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+function formatBrazilPhone(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    return '+' + digits;
+  }
+  if (digits.length === 10 || digits.length === 11) {
+    return '+55' + digits;
+  }
+  return '+' + (digits.startsWith('55') ? digits : '55' + digits);
+}
+
 export default function GestorAlunos() {
   const [alunos, setAlunos] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -74,7 +87,7 @@ export default function GestorAlunos() {
       enrollment: form.enrollment,
       shift: form.shift,
       guardian_name: form.guardian_name,
-      guardian_phone: form.guardian_phone,
+      guardian_phone: formatBrazilPhone(form.guardian_phone),
       status: 'active'
     }]).select().single();
 
@@ -230,7 +243,7 @@ export default function GestorAlunos() {
           name: aluno.nome,
           enrollment: aluno.matricula,
           guardian_name: aluno.guardian_name || null,
-          guardian_phone: aluno.guardian_phone || null,
+          guardian_phone: formatBrazilPhone(aluno.guardian_phone),
           shift: 'Manhã',
           status: 'active'
         }]).select().single();

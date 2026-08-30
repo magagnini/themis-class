@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase, supabaseAdminAuth } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { School, Lock, Unlock, Loader2, Plus, UserPlus } from 'lucide-react';
+import { School, Lock, Unlock, Loader2, Plus, UserPlus, Settings } from 'lucide-react';
 
 export default function AdminSchools() {
+  const navigate = useNavigate();
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -116,6 +118,10 @@ export default function AdminSchools() {
                   <td style={{ padding: '14px 16px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>{school.max_professors || 30} prof.</td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => navigate(`/admin/escolas/${school.id}`)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #c4b5fd', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#7c3aed', fontWeight: '500' }}>
+                        <Settings size={14} /> Gerenciar
+                      </button>
                       <button onClick={() => toggleStatus(school)}
                         style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: `1px solid ${school.status === 'active' ? '#fca5a5' : '#6ee7b7'}`, borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: school.status === 'active' ? '#ef4444' : '#059669', fontWeight: '500' }}>
                         {school.status === 'active' ? <><Lock size={14} /> Bloquear</> : <><Unlock size={14} /> Ativar</>}

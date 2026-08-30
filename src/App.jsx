@@ -9,7 +9,7 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminSchools from './pages/admin/Schools';
 import AdminUsers from './pages/admin/Users';
-
+import AdminSchoolDetails from './pages/admin/SchoolDetails';
 import GestorLayout from './layouts/GestorLayout';
 import GestorDashboard from './pages/gestor/Dashboard';
 import Ocorrencias from './pages/gestor/Ocorrencias';
@@ -70,6 +70,7 @@ export default function App() {
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout /></ProtectedRoute>}>
           <Route index element={<AdminDashboard />} />
           <Route path="escolas" element={<AdminSchools />} />
+          <Route path="escolas/:id" element={<AdminSchoolDetails />} />
           <Route path="usuarios" element={<AdminUsers />} />
           <Route path="configuracoes" element={<div>Configurações da Plataforma em breve</div>} />
         </Route>
@@ -78,11 +79,10 @@ export default function App() {
         <Route path="/gestor" element={<ProtectedRoute allowedRoles={['gestor', 'admin']}><GestorLayout /></ProtectedRoute>}>
           <Route index element={<GestorDashboard />} />
           <Route path="ocorrencias" element={<Ocorrencias />} />
-          <Route path="nova-ocorrencia" element={<NovaOcorrencia />} />
+          <Route path="fazer-oc" element={<ProfNovaOcorrencia />} />
           <Route path="alunos" element={<Alunos />} />
           <Route path="professores" element={<Professores />} />
           <Route path="turmas" element={<Turmas />} />
-          <Route path="tipos-ocorrencia" element={<TiposOcorrencia />} />
           <Route path="comunicacoes" element={<Comunicacoes />} />
           <Route path="relatorios" element={<Relatorios />} />
           <Route path="configuracoes" element={<Configuracoes />} />

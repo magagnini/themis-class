@@ -17,6 +17,7 @@ export default function GestorLayout() {
   const menuItems = [
     { path: '/gestor', label: 'Dashboard', icon: <LayoutDashboard size={19} /> },
     { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={19} /> },
+    { path: '/gestor/fazer-oc', label: 'FAZER OC', icon: <FilePen size={19} /> },
     { path: '/gestor/alunos', label: 'Alunos', icon: <Users size={19} /> },
     { path: '/gestor/professores', label: 'Professores', icon: <GraduationCap size={19} /> },
     { path: '/gestor/turmas', label: 'Turmas', icon: <BookOpen size={19} /> },

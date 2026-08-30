@@ -15,7 +15,7 @@ export default function GestorAlunos() {
 
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', enrollment: '', shift: 'Manhã', class_id: '', guardian_name: '', guardian_phone: '' });
+  const [form, setForm] = useState({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
 
   // Importação
   const fileInputRef = useRef(null);
@@ -60,10 +60,13 @@ export default function GestorAlunos() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.class_id) {
+    if (!form.name.trim() || !form.turma_texto.trim()) {
       return showToast('Nome e Turma são obrigatórios.', 'error');
     }
     setSaving(true);
+
+    // Criar/obter turma com busca case-insensitive
+    const classId = await findOrCreateClass(form.turma_texto.trim());
 
     const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
       school_id: schoolId,
@@ -78,10 +81,12 @@ export default function GestorAlunos() {
     if (studentError) {
       showToast('Erro ao criar aluno: ' + studentError.message, 'error');
     } else {
-      await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: form.class_id, school_id: schoolId }]);
+      if (classId) {
+        await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: classId, school_id: schoolId }]);
+      }
       showToast('Aluno cadastrado com sucesso!');
       setShowModal(false);
-      setForm({ name: '', enrollment: '', shift: 'Manhã', class_id: '', guardian_name: '', guardian_phone: '' });
+      setForm({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
       fetchData();
     }
     setSaving(false);
@@ -167,20 +172,31 @@ export default function GestorAlunos() {
     reader.readAsBinaryString(file);
   };
 
-  // Criar ou reutilizar turma por nome
+  // Criar ou reutilizar turma por nome — case insensitive
   const findOrCreateClass = async (className) => {
     if (!className || !className.trim()) return null;
     const name = className.trim();
 
-    // Buscar se já existe
-    const { data: existing } = await supabase.from('classes').select('id').eq('school_id', schoolId).eq('name', name).maybeSingle();
+    // Buscar turma com nome case-insensitive
+    const { data: existing } = await supabase
+      .from('classes')
+      .select('id, name')
+      .eq('school_id', schoolId)
+      .ilike('name', name)
+      .maybeSingle();
+
     if (existing) return existing.id;
 
-    // Criar nova turma
-    const { data: created, error } = await supabase.from('classes').insert([{ school_id: schoolId, name, active: true }]).select('id').single();
+    // Criar nova turma com nome normalizado (como foi digitado pelo primeiro a criar)
+    const { data: created, error } = await supabase
+      .from('classes')
+      .insert([{ school_id: schoolId, name: name, active: true }])
+      .select('id')
+      .single();
+
     if (error) {
-      // Pode ter sido criada por outro processo (race condition) — buscar novamente
-      const { data: retry } = await supabase.from('classes').select('id').eq('school_id', schoolId).eq('name', name).maybeSingle();
+      // Race condition: buscar novamente
+      const { data: retry } = await supabase.from('classes').select('id').eq('school_id', schoolId).ilike('name', name).maybeSingle();
       return retry?.id || null;
     }
     return created.id;
@@ -356,10 +372,8 @@ export default function GestorAlunos() {
             </div>
           </div>
           <div><label style={lbl}>Turma *</label>
-            <select style={inp} value={form.class_id} onChange={e => setForm(p => ({ ...p, class_id: e.target.value }))}>
-              <option value="">Selecione uma turma...</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <input type="text" style={inp} placeholder="Ex: 6° Ano A, 3° B, Turma 2..." value={form.turma_texto} onChange={e => setForm(p => ({ ...p, turma_texto: e.target.value }))} />
+            <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#9ca3af' }}>A turma será criada automaticamente se não existir. A busca é insensível a maiúsculas/minúsculas.</p>
           </div>
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '4px 0' }} />
           <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase' }}>Dados do Responsável</p>

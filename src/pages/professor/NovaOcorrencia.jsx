@@ -207,10 +207,10 @@ export default function FazerOC() {
   if (!hasMinRequirements) return (
     <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
       <AlertCircle size={64} color="#9b1c26" style={{ marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
-      <h2 style={{ color: '#111827', marginBottom: '8px' }}>Não é possível registrar ocorrências ainda</h2>
+      <h2 style={{ color: '#111827', marginBottom: '8px' }}>Nenhum aluno cadastrado nesta escola</h2>
       <p style={{ color: '#6b7280', lineHeight: '1.6' }}>
-        Para registrar uma ocorrência, é necessário que existam <strong>pelo menos 1 professor</strong> e <strong>pelo menos 1 aluno</strong> cadastrados na escola.
-        <br />Peça ao gestor para cadastrar os professores e alunos primeiro.
+        Para registrar uma ocorrência em <strong>FAZER OC</strong>, é necessário que existam <strong>alunos cadastrados</strong> na sua escola.
+        <br />Peça ao gestor escolar para cadastrar ou importar os alunos da escola primeiro.
       </p>
     </div>
   );

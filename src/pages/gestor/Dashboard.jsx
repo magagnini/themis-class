@@ -8,38 +8,100 @@ export default function Dashboard() {
   const [atividades, setAtividades] = useState([]);
   const [dadosGrafico, setDadosGrafico] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const [userName, setUserName] = useState('Gestor');
 
   useEffect(() => {
-    // Mocking the dashboard data for now, as we don't have the real tables populated yet
-    const carregarDados = () => {
-      setCarregando(true);
-      
-      // Mock stats
-      setStats({
-        ocorrencias_hoje: 12,
-        alunos_envolvidos: 45,
-        total_ocorrencias: 128,
-        graves: 8
-      });
-
-      // Mock recent activities
-      setAtividades([
-        { id: 1, descricao: 'Nova ocorrência grave: João Silva', created_at: new Date().toISOString() },
-        { id: 2, descricao: 'Ocorrência leve: Maria Souza (Atraso)', created_at: new Date(Date.now() - 3600000).toISOString() },
-        { id: 3, descricao: 'Aluno cadastrado: Pedro Costa', created_at: new Date(Date.now() - 7200000).toISOString() },
-        { id: 4, descricao: 'Ocorrência atualizada: Ana Lima', created_at: new Date(Date.now() - 86400000).toISOString() }
-      ]);
-
-      // Mock chart data (last 6 months)
-      const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
-      const ultimos6Meses = meses.map(m => ({ name: m, total: Math.floor(Math.random() * 50) + 10 }));
-      setDadosGrafico(ultimos6Meses);
-
-      setCarregando(false);
-    };
-
     carregarDados();
   }, []);
+
+  const carregarDados = async () => {
+    setCarregando(true);
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) { setCarregando(false); return; }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_id, name')
+      .eq('id', userData.user.id)
+      .single();
+
+    if (!profile?.school_id) { setCarregando(false); return; }
+
+    const schoolId = profile.school_id;
+    setUserName(profile.name || 'Gestor');
+
+    const hoje = new Date();
+    const inicioDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString();
+    const fimDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1).toISOString();
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString();
+
+    // Buscar todos os incidents da escola deste mês
+    const { data: incidents } = await supabase
+      .from('incidents')
+      .select('id, student_id, severity, created_at, incident_date, students(name), incident_types_list, description')
+      .eq('school_id', schoolId)
+      .gte('created_at', inicioMes)
+      .order('created_at', { ascending: false });
+
+    const todasOcorrencias = incidents || [];
+
+    // Ocorrências hoje
+    const ocHoje = todasOcorrencias.filter(i => {
+      const d = i.incident_date || i.created_at;
+      return d >= inicioDia && d < fimDia;
+    }).length;
+
+    // Alunos únicos envolvidos no mês
+    const alunosUnicos = new Set(todasOcorrencias.map(i => i.student_id)).size;
+
+    // Graves no mês
+    const graves = todasOcorrencias.filter(i => i.severity === 'high').length;
+
+    setStats({
+      ocorrencias_hoje: ocHoje,
+      alunos_envolvidos: alunosUnicos,
+      total_ocorrencias: todasOcorrencias.length,
+      graves,
+    });
+
+    // Atividade recente (últimas 5 ocorrências)
+    const recentes = todasOcorrencias.slice(0, 5).map(i => {
+      const tipos = (i.incident_types_list || []).map(t => t.label).join(', ');
+      const nomeAluno = i.students?.name || 'Aluno';
+      return {
+        id: i.id,
+        descricao: `${nomeAluno} — ${tipos || i.description || 'Ocorrência registrada'}`,
+        created_at: i.created_at,
+      };
+    });
+    setAtividades(recentes);
+
+    // Gráfico — últimos 6 meses
+    const meses = [];
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - m, 1);
+      const inicioM = d.toISOString();
+      const fimM = new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString();
+      const nome = d.toLocaleDateString('pt-BR', { month: 'short' });
+      meses.push({ name: nome.charAt(0).toUpperCase() + nome.slice(1, 3), inicioM, fimM });
+    }
+
+    // Buscar todos os incidents dos últimos 6 meses
+    const { data: incidentsGrafico } = await supabase
+      .from('incidents')
+      .select('created_at')
+      .eq('school_id', schoolId)
+      .gte('created_at', meses[0].inicioM);
+
+    const dadosMeses = meses.map(({ name, inicioM, fimM }) => ({
+      name,
+      total: (incidentsGrafico || []).filter(i => i.created_at >= inicioM && i.created_at < fimM).length,
+    }));
+
+    setDadosGrafico(dadosMeses);
+    setCarregando(false);
+  };
 
   const cards = [
     { label: 'Ocorrências Hoje', valor: stats.ocorrencias_hoje, icone: <AlertTriangle />, cor: '#f59e0b' },
@@ -51,14 +113,8 @@ export default function Dashboard() {
   if (carregando) {
     return (
       <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 className="animar-giro" size={40} color="#9b1c26" />
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          .animar-giro { animation: spin 1s linear infinite; }
-        `}</style>
+        <Loader2 size={40} color="#9b1c26" style={{ animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -66,7 +122,7 @@ export default function Dashboard() {
   return (
     <div>
       <h2 style={{ fontSize: '28px', marginBottom: '10px', color: '#111827', margin: '0 0 8px 0' }}>Visão Geral</h2>
-      <p style={{ color: '#6b7280', margin: '0 0 30px 0' }}>Bem-vindo ao Themis Class, Gestor.</p>
+      <p style={{ color: '#6b7280', margin: '0 0 30px 0' }}>Bem-vindo ao Themis Class, {userName}.</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '40px' }}>
         {cards.map((card, i) => (
@@ -96,10 +152,11 @@ export default function Dashboard() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#111827', border: 'none', borderRadius: '8px', color: '#fff' }}
                   itemStyle={{ color: '#fff' }}
+                  formatter={(v) => [v, 'Ocorrências']}
                 />
                 <Area type="monotone" dataKey="total" stroke="#9b1c26" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
               </AreaChart>
@@ -111,31 +168,27 @@ export default function Dashboard() {
           <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#374151' }}>Atividade Recente</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {atividades.length > 0 ? atividades.map((at) => (
-              <div key={at.id} style={{ display: 'flex', gap: '12px', borderBottom: '1px solid #f3f4f6', paddingBottom: '12px', alignItems: 'center' }}>
-                <div style={{
-                  padding: '10px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#6b7280'
-                }}>
-                  <Clock size={16} />
+              <div key={at.id} style={{ display: 'flex', gap: '12px', borderBottom: '1px solid #f3f4f6', paddingBottom: '12px', alignItems: 'flex-start' }}>
+                <div style={{ padding: '8px', backgroundColor: '#fdf2f2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b1c26', flexShrink: 0 }}>
+                  <Clock size={14} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: '500', color: '#111827', marginBottom: '2px' }}>{at.descricao}</div>
-                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#111827', marginBottom: '2px', lineHeight: '1.4' }}>{at.descricao}</div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>
                     {new Date(at.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>
             )) : (
-              <p style={{ color: '#6b7280', fontSize: '14px' }}>Nenhuma atividade registrada.</p>
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#9ca3af' }}>
+                <AlertTriangle size={32} style={{ marginBottom: '8px', opacity: 0.4 }} />
+                <p style={{ margin: 0, fontSize: '13px' }}>Nenhuma ocorrência registrada ainda.</p>
+              </div>
             )}
           </div>
         </div>
       </div>
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

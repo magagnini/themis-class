@@ -1,34 +1,34 @@
 -- ============================================================
--- MIGRATION 3 — FIX: Normalizar shift antes de aplicar constraint
--- Execute este script COMPLETO no SQL Editor do Supabase
+-- MIGRATION 3 — VERSÃO FINAL COMPLETA
+-- Execute este script inteiro no SQL Editor do Supabase
 -- ============================================================
 
--- 1. Adicionar colunas de students (sem mexer em shift ainda)
+-- =============================================
+-- 1. TABELA STUDENTS — Colunas faltando
+-- =============================================
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS enrollment TEXT;
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS guardian_name TEXT;
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS guardian_phone TEXT;
 
--- 2. PRIMEIRO: normalizar os valores existentes de shift (português → inglês)
-UPDATE public.students SET shift = 'morning'   WHERE shift IN ('Manhã', 'manha', 'manhã', 'MANHÃ', 'morning');
-UPDATE public.students SET shift = 'afternoon' WHERE shift IN ('Tarde', 'tarde', 'TARDE', 'afternoon');
-UPDATE public.students SET shift = 'night'     WHERE shift IN ('Noite', 'noite', 'NOITE', 'night');
--- Qualquer outro valor vira 'morning' como padrão seguro
-UPDATE public.students SET shift = 'morning' WHERE shift NOT IN ('morning', 'afternoon', 'night') OR shift IS NULL;
+-- Normalizar shift (português → inglês) ANTES da constraint
+UPDATE public.students SET shift = 'morning'   WHERE shift IN ('Manhã', 'manha', 'manhã', 'MANHÃ') OR shift IS NULL OR shift NOT IN ('morning', 'afternoon', 'night');
+UPDATE public.students SET shift = 'afternoon' WHERE shift IN ('Tarde', 'tarde', 'TARDE');
+UPDATE public.students SET shift = 'night'     WHERE shift IN ('Noite', 'noite', 'NOITE');
 
--- 3. AGORA aplicar a constraint (sem valores inválidos)
 ALTER TABLE public.students DROP CONSTRAINT IF EXISTS students_shift_check;
 ALTER TABLE public.students ALTER COLUMN shift SET DEFAULT 'morning';
 ALTER TABLE public.students ADD CONSTRAINT students_shift_check
   CHECK (shift IN ('morning', 'afternoon', 'night'));
 
--- 4. Status constraint
+-- Status dos alunos
 ALTER TABLE public.students DROP CONSTRAINT IF EXISTS students_status_check;
+UPDATE public.students SET status = 'active' WHERE status IS NULL OR status NOT IN ('active', 'inactive');
 ALTER TABLE public.students ADD CONSTRAINT students_status_check
   CHECK (status IN ('active', 'inactive'));
 
 -- =============================================
--- TABELA INCIDENTS — Colunas faltando + severity fix
+-- 2. TABELA INCIDENTS — Colunas + constraints
 -- =============================================
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_date_only DATE;
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_time TEXT;
@@ -36,6 +36,7 @@ ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS subject TEXT;
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_types_list JSONB DEFAULT '[]';
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS outros_description TEXT;
 
+-- Remover NOT NULL onde não deveria existir
 ALTER TABLE public.incidents ALTER COLUMN incident_type_id DROP NOT NULL;
 
 DO $$
@@ -48,19 +49,30 @@ BEGIN
   END IF;
 END $$;
 
--- Normalizar severity existente antes de aplicar constraint
+-- Normalizar severity existente antes da constraint
 UPDATE public.incidents SET severity = 'low'    WHERE severity IN ('baixa', 'Baixa', 'BAIXA');
 UPDATE public.incidents SET severity = 'medium' WHERE severity IN ('média', 'media', 'Média', 'Media', 'MEDIA');
 UPDATE public.incidents SET severity = 'high'   WHERE severity IN ('alta', 'Alta', 'ALTA');
-UPDATE public.incidents SET severity = 'low' WHERE severity NOT IN ('low', 'medium', 'high') OR severity IS NULL;
+UPDATE public.incidents SET severity = 'low'    WHERE severity IS NULL OR severity NOT IN ('low', 'medium', 'high');
 
 ALTER TABLE public.incidents DROP CONSTRAINT IF EXISTS incidents_severity_check;
 ALTER TABLE public.incidents ALTER COLUMN severity SET DEFAULT 'low';
 ALTER TABLE public.incidents ADD CONSTRAINT incidents_severity_check
   CHECK (severity IN ('low', 'medium', 'high'));
 
+-- Normalizar status existente antes da constraint
+UPDATE public.incidents SET status = 'pending'     WHERE status IN ('pendente', 'Pendente', 'PENDENTE');
+UPDATE public.incidents SET status = 'in_progress' WHERE status IN ('em_acompanhamento', 'em andamento', 'Em Andamento');
+UPDATE public.incidents SET status = 'resolved'    WHERE status IN ('resolvido', 'Resolvido', 'RESOLVIDO');
+UPDATE public.incidents SET status = 'pending'     WHERE status IS NULL OR status NOT IN ('pending', 'in_progress', 'resolved');
+
+ALTER TABLE public.incidents DROP CONSTRAINT IF EXISTS incidents_status_check;
+ALTER TABLE public.incidents ALTER COLUMN status SET DEFAULT 'pending';
+ALTER TABLE public.incidents ADD CONSTRAINT incidents_status_check
+  CHECK (status IN ('pending', 'in_progress', 'resolved'));
+
 -- =============================================
--- TABELA INCIDENT_TYPES — Scope e colunas
+-- 3. TABELA INCIDENT_TYPES
 -- =============================================
 ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
@@ -70,7 +82,7 @@ UPDATE public.incident_types SET scope = 'global', is_default = TRUE WHERE schoo
 UPDATE public.incident_types SET scope = 'school' WHERE school_id IS NOT NULL;
 
 -- =============================================
--- TABELA COMMUNICATIONS — Colunas faltando
+-- 4. TABELA COMMUNICATIONS
 -- =============================================
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS teacher_name TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS subject TEXT;
@@ -84,13 +96,15 @@ ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS class_name TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMPTZ;
 
 -- =============================================
--- TABELA CLASSES
+-- 5. TABELA CLASSES
 -- =============================================
 ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 
 -- =============================================
--- RLS POLICIES — Recriar
+-- 6. RLS POLICIES
 -- =============================================
+
+-- INCIDENT_TYPES: SELECT
 DROP POLICY IF EXISTS "Users access incident types" ON public.incident_types;
 CREATE POLICY "Users access incident types" ON public.incident_types
   FOR SELECT USING (
@@ -99,6 +113,7 @@ CREATE POLICY "Users access incident types" ON public.incident_types
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- INCIDENT_TYPES: INSERT
 DROP POLICY IF EXISTS "Admin and Gestor insert incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor insert incident types" ON public.incident_types
   FOR INSERT WITH CHECK (
@@ -109,6 +124,7 @@ CREATE POLICY "Admin and Gestor insert incident types" ON public.incident_types
     )
   );
 
+-- INCIDENT_TYPES: UPDATE
 DROP POLICY IF EXISTS "Admin and Gestor update incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor update incident types" ON public.incident_types
   FOR UPDATE USING (
@@ -119,6 +135,7 @@ CREATE POLICY "Admin and Gestor update incident types" ON public.incident_types
     )
   );
 
+-- INCIDENT_TYPES: DELETE
 DROP POLICY IF EXISTS "Admin and Gestor delete incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor delete incident types" ON public.incident_types
   FOR DELETE USING (
@@ -129,6 +146,7 @@ CREATE POLICY "Admin and Gestor delete incident types" ON public.incident_types
     )
   );
 
+-- INCIDENTS: INSERT
 DROP POLICY IF EXISTS "Users insert incidents" ON public.incidents;
 CREATE POLICY "Users insert incidents" ON public.incidents
   FOR INSERT WITH CHECK (
@@ -136,6 +154,7 @@ CREATE POLICY "Users insert incidents" ON public.incidents
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- COMMUNICATIONS: INSERT
 DROP POLICY IF EXISTS "Users insert communications" ON public.communications;
 CREATE POLICY "Users insert communications" ON public.communications
   FOR INSERT WITH CHECK (
@@ -143,6 +162,7 @@ CREATE POLICY "Users insert communications" ON public.communications
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- COMMUNICATIONS: UPDATE
 DROP POLICY IF EXISTS "Users update communications" ON public.communications;
 CREATE POLICY "Users update communications" ON public.communications
   FOR UPDATE USING (
@@ -150,6 +170,7 @@ CREATE POLICY "Users update communications" ON public.communications
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- CLASSES: INSERT
 DROP POLICY IF EXISTS "Gestor insert classes" ON public.classes;
 CREATE POLICY "Gestor insert classes" ON public.classes
   FOR INSERT WITH CHECK (
@@ -157,6 +178,7 @@ CREATE POLICY "Gestor insert classes" ON public.classes
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- CLASS_STUDENTS: INSERT
 DROP POLICY IF EXISTS "Users insert class_students" ON public.class_students;
 CREATE POLICY "Users insert class_students" ON public.class_students
   FOR INSERT WITH CHECK (
@@ -164,6 +186,7 @@ CREATE POLICY "Users insert class_students" ON public.class_students
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+-- STUDENTS: INSERT
 DROP POLICY IF EXISTS "Users insert students" ON public.students;
 CREATE POLICY "Users insert students" ON public.students
   FOR INSERT WITH CHECK (
@@ -172,7 +195,7 @@ CREATE POLICY "Users insert students" ON public.students
   );
 
 -- =============================================
--- DADOS INICIAIS — 10 tipos padrão globais
+-- 7. DADOS INICIAIS — 10 tipos padrão globais
 -- =============================================
 DELETE FROM public.incident_types WHERE school_id IS NULL;
 

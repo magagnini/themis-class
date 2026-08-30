@@ -42,23 +42,35 @@ export default function Login() {
       }
 
       if (data?.user) {
-        // Buscar o perfil do usuário
+        // Buscar o perfil do usuário (usando maybeSingle para evitar erro caso não exista)
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, active, name')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle();
 
         if (profileError) {
           setError('Erro ao buscar perfil: ' + profileError.message);
         } else if (profileData) {
+          if (profileData.active === false) {
+            await supabase.auth.signOut();
+            setError('Sua conta está suspensa ou desativada. Contate o administrador.');
+            setLoading(false);
+            return;
+          }
           const role = profileData.role;
           if (role === 'admin') navigate('/admin');
           else if (role === 'gestor') navigate('/gestor');
           else if (role === 'professor') navigate('/professor');
           else setError('Perfil sem permissão atribuída.');
         } else {
-          setError('Perfil não encontrado no banco de dados.');
+          // Se perfil não foi encontrado na tabela profiles
+          // Verificar se temos role no user metadata
+          const metaRole = data.user.user_metadata?.role;
+          if (metaRole === 'admin') navigate('/admin');
+          else if (metaRole === 'gestor') navigate('/gestor');
+          else if (metaRole === 'professor') navigate('/professor');
+          else setError('Perfil do usuário não encontrado na tabela profiles.');
         }
       }
     } catch (err) {

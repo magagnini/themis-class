@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone } from 'lucide-react';
+import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 function formatBrazilPhone(phone) {
@@ -35,6 +35,7 @@ export default function GestorAlunos() {
   const [alunosParaImportar, setAlunosParaImportar] = useState([]);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importTurmaDefault, setImportTurmaDefault] = useState('');
 
   // Histórico
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -42,6 +43,16 @@ export default function GestorAlunos() {
   const [alunoHistory, setAlunoHistory] = useState({ recent: [], old_count: 0, loading: false });
 
   useEffect(() => { fetchData(); }, []);
+
+  const handleDownloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Nome do aluno', 'RA', 'Turma', 'Nome do responsável', 'Número do responsável'],
+      ['VINICIUS SILVA', '123456', '2º ANO A', 'MARIA SILVA', '11999999999']
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+    XLSX.writeFile(wb, 'Modelo_Alunos.xlsx');
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -176,6 +187,7 @@ export default function GestorAlunos() {
         }
 
         setAlunosParaImportar(alunosTemp);
+        setImportTurmaDefault('');
         setShowImportModal(true);
       } catch (error) {
         console.error('Erro ao processar planilha:', error);
@@ -235,8 +247,8 @@ export default function GestorAlunos() {
 
     // Verificar se algum aluno tem turma indefinida e não há campo de turma preenchido
     const semTurma = alunosParaImportar.filter(a => !a.turma || !a.turma.trim());
-    if (semTurma.length > 0) {
-      return showToast(`${semTurma.length} aluno(s) sem turma definida. Verifique a planilha.`, 'error');
+    if (semTurma.length > 0 && !importTurmaDefault.trim()) {
+      return showToast(`${semTurma.length} aluno(s) sem turma definida. Informe a turma no campo abaixo ou verifique a planilha.`, 'error');
     }
 
     setImporting(true);
@@ -249,8 +261,8 @@ export default function GestorAlunos() {
         const { data: existing } = await supabase.from('students').select('id').eq('school_id', schoolId).eq('name', aluno.nome).maybeSingle();
         if (existing) { ignorados++; continue; }
 
-        // Criar/obter turma
-        const classId = await findOrCreateClass(aluno.turma);
+        const turmaToUse = aluno.turma?.trim() || importTurmaDefault.trim();
+        const classId = await findOrCreateClass(turmaToUse);
 
         // Criar aluno
         const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
@@ -322,6 +334,9 @@ export default function GestorAlunos() {
           <input type="file" ref={fileInputRef} onChange={handleFileImport} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
           <button onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', padding: '10px 16px', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
             <FileSpreadsheet size={18} /> Importar Planilha
+          </button>
+          <button onClick={handleDownloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', padding: '10px 16px', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
+            <Download size={18} /> Baixar planilha padrão
           </button>
           <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
             <Plus size={18} /> Novo Aluno
@@ -450,6 +465,24 @@ export default function GestorAlunos() {
             </tbody>
           </table>
         </div>
+
+        {alunosParaImportar.some(a => !a.turma || !a.turma.trim()) && (
+          <div style={{ marginTop: '16px', padding: '16px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+            <label style={{ display: 'block', fontWeight: '600', fontSize: '14px', marginBottom: '8px', color: '#374151' }}>
+              Definir turma para esta importação
+            </label>
+            <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#6b7280' }}>
+              A planilha não possui a informação de turma. Informe a turma que será atribuída aos alunos desta importação.
+            </p>
+            <input
+              type="text"
+              placeholder="Digite a turma (Ex: 2º ANO A)"
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+              value={importTurmaDefault}
+              onChange={e => setImportTurmaDefault(e.target.value)}
+            />
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
           <button onClick={() => setShowImportModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>

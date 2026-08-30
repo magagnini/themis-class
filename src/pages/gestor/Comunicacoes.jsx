@@ -71,7 +71,7 @@ export default function Comunicacoes() {
       return;
     }
 
-    const msg = buildWhatsappMessage({
+    const msg = comm.message || buildWhatsappMessage({
       studentName: comm.student_name || comm.recipient_name || 'Aluno',
       types: comm.incident_types_list || [],
       subject: comm.subject || '',

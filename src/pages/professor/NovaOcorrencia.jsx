@@ -25,6 +25,20 @@ export default function FazerOC() {
   });
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [outrosText, setOutrosText] = useState('');
+  const [continuationMessage, setContinuationMessage] = useState('');
+
+  const CONTINUATION_OPTIONS = [
+    { value: '', label: 'Nenhuma mensagem adicional' },
+    { value: 'Por gentileza, converse com o(a) aluno(a) para que essa situação não volte a ocorrer.', label: 'Por gentileza, converse com o(a) aluno(a) para que essa situação não volte a ocorrer.' },
+    { value: 'Por favor, converse com o(a) aluno(a) para que possamos ter um melhor desempenho escolar.', label: 'Por favor, converse com o(a) aluno(a) para que possamos ter um melhor desempenho escolar.' },
+    { value: 'Pedimos, por gentileza, que converse com o(a) aluno(a) sobre o ocorrido e reforce a importância de manter uma boa postura durante as atividades escolares.', label: 'Pedimos, por gentileza, que converse com o(a) aluno(a) sobre o ocorrido e reforce a importância de manter uma boa postura durante as atividades escolares.' },
+    { value: 'Contamos com a parceria da família para orientar o(a) aluno(a) e contribuir para que essa situação não volte a ocorrer.', label: 'Contamos com a parceria da família para orientar o(a) aluno(a) e contribuir para que essa situação não volte a ocorrer.' },
+    { value: 'Pedimos uma atenção especial a essa situação e, se possível, que converse com o(a) aluno(a) sobre o ocorrido.', label: 'Pedimos uma atenção especial a essa situação e, se possível, que converse com o(a) aluno(a) sobre o ocorrido.' },
+    { value: 'Pedimos o apoio da família para que o(a) aluno(a) compreenda a importância de cumprir as regras e manter um bom comportamento escolar.', label: 'Pedimos o apoio da família para que o(a) aluno(a) compreenda a importância de cumprir as regras e manter um bom comportamento escolar.' },
+    { value: 'Esperamos que, com a orientação da família e da escola, possamos contribuir para uma melhora nesse comportamento.', label: 'Esperamos que, com a orientação da família e da escola, possamos contribuir para uma melhora nesse comportamento.' },
+    { value: 'Pedimos que acompanhe essa situação junto ao(à) aluno(a), para que possamos trabalhar em conjunto em busca de melhores resultados.', label: 'Pedimos que acompanhe essa situação junto ao(à) aluno(a), para que possamos trabalhar em conjunto em busca de melhores resultados.' },
+    { value: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.', label: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.' }
+  ];
 
   useEffect(() => {
     loadData();
@@ -186,6 +200,7 @@ export default function FazerOC() {
       setForm({ student_id: '', date: new Date().toISOString().split('T')[0], time: '', subject: '' });
       setSelectedTypes([]);
       setOutrosText('');
+      setContinuationMessage('');
       setSelectedTeacherId('');
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
@@ -200,11 +215,19 @@ export default function FazerOC() {
     const hasOutros = outrosTypeId && types.some(t => t.id === outrosTypeId);
     const tiposNormais = types.filter(t => t.id !== outrosTypeId).map(t => t.label).join(', ');
 
+    let msg = '';
     if (hasOutros && tiposNormais.length === 0) {
-      return `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência. Motivo: ${outrosText}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
+      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência. Motivo: ${outrosText}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
+    } else {
+      const parte = tiposNormais || outrosText;
+      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência referente a: ${parte}${hasOutros ? `. Observação: ${outrosText}` : ''}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
     }
-    const parte = tiposNormais || outrosText;
-    return `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência referente a: ${parte}${hasOutros ? `. Observação: ${outrosText}` : ''}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
+
+    if (continuationMessage) {
+      msg += `\n\n${continuationMessage}`;
+    }
+
+    return msg;
   };
 
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', outline: 'none' };
@@ -351,6 +374,16 @@ export default function FazerOC() {
             </p>
           </div>
         )}
+
+        {/* Mensagem de continuação */}
+        <div>
+          <label style={lbl}>Mensagem de continuação</label>
+          <select style={inp} value={continuationMessage} onChange={e => setContinuationMessage(e.target.value)}>
+            {CONTINUATION_OPTIONS.map((opt, i) => (
+              <option key={i} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Botão */}
         <button

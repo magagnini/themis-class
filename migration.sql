@@ -32,6 +32,10 @@ ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS guardian_phone TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS class_name TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMPTZ;
 
+-- 5b. Garantir colunas na tabela incident_types se ela já existir
+ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
+
 -- 6. Inserir os 10 tipos de ocorrência padrão (se não existirem)
 INSERT INTO public.incident_types (name, description, is_default, active, school_id)
 SELECT name, description, TRUE, TRUE, NULL

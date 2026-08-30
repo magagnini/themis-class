@@ -1,25 +1,34 @@
 -- ============================================================
--- THEMIS CLASS — MIGRATION 3 (Correções Completas do Mega Prompt)
--- Execute este script inteiro no SQL Editor do Supabase
+-- MIGRATION 3 — FIX: Normalizar shift antes de aplicar constraint
+-- Execute este script COMPLETO no SQL Editor do Supabase
 -- ============================================================
 
--- =============================================
--- 1. TABELA STUDENTS — Colunas faltando
--- =============================================
+-- 1. Adicionar colunas de students (sem mexer em shift ainda)
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS enrollment TEXT;
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive'));
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS guardian_name TEXT;
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS guardian_phone TEXT;
 
--- Corrigir constraint de shift (pode ter sido criada com valores em português)
+-- 2. PRIMEIRO: normalizar os valores existentes de shift (português → inglês)
+UPDATE public.students SET shift = 'morning'   WHERE shift IN ('Manhã', 'manha', 'manhã', 'MANHÃ', 'morning');
+UPDATE public.students SET shift = 'afternoon' WHERE shift IN ('Tarde', 'tarde', 'TARDE', 'afternoon');
+UPDATE public.students SET shift = 'night'     WHERE shift IN ('Noite', 'noite', 'NOITE', 'night');
+-- Qualquer outro valor vira 'morning' como padrão seguro
+UPDATE public.students SET shift = 'morning' WHERE shift NOT IN ('morning', 'afternoon', 'night') OR shift IS NULL;
+
+-- 3. AGORA aplicar a constraint (sem valores inválidos)
 ALTER TABLE public.students DROP CONSTRAINT IF EXISTS students_shift_check;
-ALTER TABLE public.students ALTER COLUMN shift DROP NOT NULL;
 ALTER TABLE public.students ALTER COLUMN shift SET DEFAULT 'morning';
 ALTER TABLE public.students ADD CONSTRAINT students_shift_check
-  CHECK (shift IS NULL OR shift IN ('morning', 'afternoon', 'night'));
+  CHECK (shift IN ('morning', 'afternoon', 'night'));
+
+-- 4. Status constraint
+ALTER TABLE public.students DROP CONSTRAINT IF EXISTS students_status_check;
+ALTER TABLE public.students ADD CONSTRAINT students_status_check
+  CHECK (status IN ('active', 'inactive'));
 
 -- =============================================
--- 2. TABELA INCIDENTS — Colunas faltando + severity fix
+-- TABELA INCIDENTS — Colunas faltando + severity fix
 -- =============================================
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_date_only DATE;
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_time TEXT;
@@ -27,10 +36,8 @@ ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS subject TEXT;
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS incident_types_list JSONB DEFAULT '[]';
 ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS outros_description TEXT;
 
--- Remover NOT NULL de incident_type_id (agora usamos JSONB lista)
 ALTER TABLE public.incidents ALTER COLUMN incident_type_id DROP NOT NULL;
 
--- Se existir coluna type_id (criada acidentalmente), remover NOT NULL
 DO $$
 BEGIN
   IF EXISTS (
@@ -41,26 +48,29 @@ BEGIN
   END IF;
 END $$;
 
--- Corrigir a constraint de severity — aceitar apenas low/medium/high (e null)
+-- Normalizar severity existente antes de aplicar constraint
+UPDATE public.incidents SET severity = 'low'    WHERE severity IN ('baixa', 'Baixa', 'BAIXA');
+UPDATE public.incidents SET severity = 'medium' WHERE severity IN ('média', 'media', 'Média', 'Media', 'MEDIA');
+UPDATE public.incidents SET severity = 'high'   WHERE severity IN ('alta', 'Alta', 'ALTA');
+UPDATE public.incidents SET severity = 'low' WHERE severity NOT IN ('low', 'medium', 'high') OR severity IS NULL;
+
 ALTER TABLE public.incidents DROP CONSTRAINT IF EXISTS incidents_severity_check;
-ALTER TABLE public.incidents ALTER COLUMN severity DROP NOT NULL;
 ALTER TABLE public.incidents ALTER COLUMN severity SET DEFAULT 'low';
 ALTER TABLE public.incidents ADD CONSTRAINT incidents_severity_check
-  CHECK (severity IS NULL OR severity IN ('low', 'medium', 'high'));
+  CHECK (severity IN ('low', 'medium', 'high'));
 
 -- =============================================
--- 3. TABELA INCIDENT_TYPES — Scope e visibilidade
+-- TABELA INCIDENT_TYPES — Scope e colunas
 -- =============================================
 ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.incident_types ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'school';
 
--- Marcar os existentes com school_id = NULL como globais
 UPDATE public.incident_types SET scope = 'global', is_default = TRUE WHERE school_id IS NULL;
 UPDATE public.incident_types SET scope = 'school' WHERE school_id IS NOT NULL;
 
 -- =============================================
--- 4. TABELA COMMUNICATIONS — Colunas faltando
+-- TABELA COMMUNICATIONS — Colunas faltando
 -- =============================================
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS teacher_name TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS subject TEXT;
@@ -74,38 +84,31 @@ ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS class_name TEXT;
 ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMPTZ;
 
 -- =============================================
--- 5. TABELA CLASSES — Colunas faltando
+-- TABELA CLASSES
 -- =============================================
 ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 
 -- =============================================
--- 6. RLS POLICIES — Recriar corretamente
+-- RLS POLICIES — Recriar
 -- =============================================
-
--- INCIDENT_TYPES: SELECT
 DROP POLICY IF EXISTS "Users access incident types" ON public.incident_types;
 CREATE POLICY "Users access incident types" ON public.incident_types
   FOR SELECT USING (
-    school_id IS NULL  -- tipos globais: todos podem ver
+    school_id IS NULL
     OR school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid())
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- INCIDENT_TYPES: INSERT
 DROP POLICY IF EXISTS "Admin and Gestor insert incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor insert incident types" ON public.incident_types
   FOR INSERT WITH CHECK (
-    -- Admin cria globais (school_id NULL)
     (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
-    OR
-    -- Gestor cria apenas para a própria escola
-    (
+    OR (
       EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'gestor')
       AND school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid())
     )
   );
 
--- INCIDENT_TYPES: UPDATE
 DROP POLICY IF EXISTS "Admin and Gestor update incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor update incident types" ON public.incident_types
   FOR UPDATE USING (
@@ -116,7 +119,6 @@ CREATE POLICY "Admin and Gestor update incident types" ON public.incident_types
     )
   );
 
--- INCIDENT_TYPES: DELETE
 DROP POLICY IF EXISTS "Admin and Gestor delete incident types" ON public.incident_types;
 CREATE POLICY "Admin and Gestor delete incident types" ON public.incident_types
   FOR DELETE USING (
@@ -127,7 +129,6 @@ CREATE POLICY "Admin and Gestor delete incident types" ON public.incident_types
     )
   );
 
--- INCIDENTS: INSERT (professores e gestores podem registrar)
 DROP POLICY IF EXISTS "Users insert incidents" ON public.incidents;
 CREATE POLICY "Users insert incidents" ON public.incidents
   FOR INSERT WITH CHECK (
@@ -135,7 +136,6 @@ CREATE POLICY "Users insert incidents" ON public.incidents
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- COMMUNICATIONS: INSERT
 DROP POLICY IF EXISTS "Users insert communications" ON public.communications;
 CREATE POLICY "Users insert communications" ON public.communications
   FOR INSERT WITH CHECK (
@@ -143,7 +143,6 @@ CREATE POLICY "Users insert communications" ON public.communications
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- COMMUNICATIONS: UPDATE
 DROP POLICY IF EXISTS "Users update communications" ON public.communications;
 CREATE POLICY "Users update communications" ON public.communications
   FOR UPDATE USING (
@@ -151,7 +150,6 @@ CREATE POLICY "Users update communications" ON public.communications
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- CLASSES: INSERT (gestor pode criar turmas)
 DROP POLICY IF EXISTS "Gestor insert classes" ON public.classes;
 CREATE POLICY "Gestor insert classes" ON public.classes
   FOR INSERT WITH CHECK (
@@ -159,7 +157,6 @@ CREATE POLICY "Gestor insert classes" ON public.classes
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- CLASS_STUDENTS: INSERT
 DROP POLICY IF EXISTS "Users insert class_students" ON public.class_students;
 CREATE POLICY "Users insert class_students" ON public.class_students
   FOR INSERT WITH CHECK (
@@ -167,7 +164,6 @@ CREATE POLICY "Users insert class_students" ON public.class_students
     OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
--- STUDENTS: INSERT
 DROP POLICY IF EXISTS "Users insert students" ON public.students;
 CREATE POLICY "Users insert students" ON public.students
   FOR INSERT WITH CHECK (
@@ -176,9 +172,8 @@ CREATE POLICY "Users insert students" ON public.students
   );
 
 -- =============================================
--- 7. DADOS INICIAIS — 10 tipos padrão (globais)
+-- DADOS INICIAIS — 10 tipos padrão globais
 -- =============================================
--- Remover os existentes com nome antigo para recriar corretos
 DELETE FROM public.incident_types WHERE school_id IS NULL;
 
 INSERT INTO public.incident_types (name, description, is_default, scope, school_id, active) VALUES

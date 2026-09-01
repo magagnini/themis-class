@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
-import { CheckSquare, Square, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 
 export default function FazerOC() {
   const [schoolId, setSchoolId] = useState(null);
@@ -25,11 +25,17 @@ export default function FazerOC() {
 
   const [form, setForm] = useState({
     student_id: '',
+    student_age: '',
     date: new Date().toISOString().split('T')[0],
     time: '',
     subject: '',
   });
-  const [selectedTypes, setSelectedTypes] = useState([]);
+
+  const [occ1, setOcc1] = useState('');
+  const [occ2, setOcc2] = useState('');
+  const [occ3, setOcc3] = useState('');
+  const [occ4, setOcc4] = useState('');
+
   const [outrosText, setOutrosText] = useState('');
   const [continuationMessage, setContinuationMessage] = useState('');
 
@@ -43,7 +49,8 @@ export default function FazerOC() {
     { value: 'Pedimos o apoio da família para que o(a) aluno(a) compreenda a importância de cumprir as regras e manter um bom comportamento escolar.', label: 'Pedimos o apoio da família para que o(a) aluno(a) compreenda a importância de cumprir as regras e manter um bom comportamento escolar.' },
     { value: 'Esperamos que, com a orientação da família e da escola, possamos contribuir para uma melhora nesse comportamento.', label: 'Esperamos que, com a orientação da família e da escola, possamos contribuir para uma melhora nesse comportamento.' },
     { value: 'Pedimos que acompanhe essa situação junto ao(à) aluno(a), para que possamos trabalhar em conjunto em busca de melhores resultados.', label: 'Pedimos que acompanhe essa situação junto ao(à) aluno(a), para que possamos trabalhar em conjunto em busca de melhores resultados.' },
-    { value: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.', label: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.' }
+    { value: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.', label: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.' },
+    { value: 'Solicitamos, por gentileza, o comparecimento do responsável à escola para conversarmos sobre o ocorrido e buscarmos juntos a melhor orientação para o(a) aluno(a).', label: 'Solicitamos, por gentileza, o comparecimento do responsável à escola para conversarmos sobre o ocorrido e buscarmos juntos a melhor orientação para o(a) aluno(a).' }
   ];
 
   useEffect(() => { loadData(); }, []);
@@ -64,7 +71,6 @@ export default function FazerOC() {
     setMyRole(profile.role);
     setTeacherName(profile.name || 'Professor');
 
-    // Buscar professores da escola caso seja gestor/admin
     if (profile.role === 'gestor' || profile.role === 'admin') {
       const { data: profsData } = await supabase
         .from('profiles')
@@ -75,7 +81,6 @@ export default function FazerOC() {
       setProfessorsList(profsData || []);
     }
 
-    // Buscar turmas (leve — só id e nome)
     const { data: classesData } = await supabase
       .from('classes')
       .select('id, name')
@@ -86,7 +91,6 @@ export default function FazerOC() {
     setClasses(classesData || []);
     setHasMinRequirements((classesData || []).length > 0);
 
-    // Buscar tipos de ocorrência dinamicamente
     const { data: typesData } = await supabase
       .from('incident_types')
       .select('id, name, school_id, is_default')
@@ -99,10 +103,9 @@ export default function FazerOC() {
     setLoading(false);
   };
 
-  // Ao mudar turma: buscar somente alunos daquela turma
   const handleClassChange = async (classId) => {
     setSelectedClassId(classId);
-    setForm(p => ({ ...p, student_id: '' })); // limpar aluno anterior
+    setForm(p => ({ ...p, student_id: '', student_age: '' }));
     setStudents([]);
 
     if (!classId) return;
@@ -122,29 +125,32 @@ export default function FazerOC() {
     setLoadingStudents(false);
   };
 
-  const toggleType = (typeId) => {
-    setSelectedTypes(prev => {
-      if (prev.includes(typeId)) return prev.filter(t => t !== typeId);
-      if (prev.length >= 4) {
-        showToast('Máximo de 4 ocorrências por registro.', 'error');
-        return prev;
-      }
-      return [...prev, typeId];
-    });
-  };
-
   const getOutrosType = () => incidentTypes.find(t => t.name.toLowerCase() === 'outros');
 
   const handleSubmit = async () => {
     if (!selectedClassId) return showToast('Selecione uma turma.', 'error');
     if (!form.student_id) return showToast('Selecione um aluno.', 'error');
+    
+    const age = parseInt(form.student_age, 10);
+    if (!age || age < 3 || age > 25) {
+      return showToast('Informe uma idade válida para o aluno (entre 3 e 25 anos).', 'error');
+    }
+
     if (!form.date) return showToast('Informe a data.', 'error');
     if (!form.time) return showToast('Informe o horário.', 'error');
     if (!form.subject.trim()) return showToast('Informe a disciplina.', 'error');
-    if (selectedTypes.length === 0) return showToast('Selecione pelo menos 1 ocorrência.', 'error');
+    
+    if (!occ1) return showToast('A Ocorrência 1 é obrigatória.', 'error');
+
+    const selectedList = [occ1, occ2, occ3, occ4].filter(Boolean);
+    const uniqueList = new Set(selectedList);
+
+    if (uniqueList.size !== selectedList.length) {
+      return showToast('Essa ocorrência já foi selecionada.', 'error');
+    }
 
     const outrosType = getOutrosType();
-    const hasOutros = outrosType && selectedTypes.includes(outrosType.id);
+    const hasOutros = outrosType && selectedList.includes(outrosType.id);
     if (hasOutros && !outrosText.trim()) return showToast('Descreva a ocorrência "Outros".', 'error');
 
     setSaving(true);
@@ -153,7 +159,7 @@ export default function FazerOC() {
       const classId = selectedClassId;
       const className = classes.find(c => c.id === selectedClassId)?.name || '';
 
-      const typesListForDB = selectedTypes.map(id => {
+      const typesListForDB = selectedList.map(id => {
         const t = incidentTypes.find(x => x.id === id);
         return { id, label: t?.name || id };
       });
@@ -170,6 +176,7 @@ export default function FazerOC() {
         .insert({
           school_id: schoolId,
           student_id: form.student_id,
+          student_age: age,
           teacher_id: finalTeacherId,
           class_id: classId,
           incident_date: new Date(form.date + 'T' + (form.time || '12:00') + ':00').toISOString(),
@@ -192,6 +199,7 @@ export default function FazerOC() {
 
       const msgFinal = buildMessage({
         studentName: student?.name || '',
+        age: age,
         types: typesListForDB,
         subject: form.subject,
         date: dateFormatted,
@@ -223,12 +231,15 @@ export default function FazerOC() {
       if (commError) console.error('Erro ao criar comunicação:', commError);
 
       setSuccess(true);
-      setForm({ student_id: '', date: new Date().toISOString().split('T')[0], time: '', subject: '' });
-      setSelectedTypes([]);
+      setForm({ student_id: '', student_age: '', date: new Date().toISOString().split('T')[0], time: '', subject: '' });
+      setOcc1('');
+      setOcc2('');
+      setOcc3('');
+      setOcc4('');
       setOutrosText('');
       setContinuationMessage('');
       setSelectedTeacherId('');
-      // Manter turma selecionada para facilitar registrar outra ocorrência da mesma turma
+      
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       console.error(err);
@@ -238,16 +249,35 @@ export default function FazerOC() {
     }
   };
 
-  const buildMessage = ({ studentName, types, subject, date, time, teacher, outrosText, outrosTypeId }) => {
+  const buildMessage = ({ studentName, age, types, subject, date, time, teacher, outrosText, outrosTypeId }) => {
     const hasOutros = outrosTypeId && types.some(t => t.id === outrosTypeId);
-    const tiposNormais = types.filter(t => t.id !== outrosTypeId).map(t => t.label).join(', ');
+    
+    // Lista de nomes para a mensagem
+    let labels = types.map(t => t.label);
+    if (hasOutros && outrosText) {
+      // Substituir 'Outros' por sua descrição ou omitir se for muito estranho
+      // O prompt diz "Atraso, Indisciplina, Uso Inadequado de Dispositivos Eletrônicos e Vulnerabilidade Familiar"
+      // E para outros, "Esse texto deverá ser incorporado à mensagem do WhatsApp normalmente."
+      // Para manter natural, podemos remover "Outros" da lista e apensar no final "referente a: A, B. Observação: XXX"
+      // ou incluir o texto direto. A regra anterior:
+      // "referente a: A, B. Observação: XXX"
+      labels = types.filter(t => t.id !== outrosTypeId).map(t => t.label);
+    }
+
+    let joinedLabels = '';
+    if (labels.length === 1) {
+      joinedLabels = labels[0];
+    } else if (labels.length > 1) {
+      const last = labels.pop();
+      joinedLabels = labels.join(', ') + ' e ' + last;
+    }
 
     let msg = '';
-    if (hasOutros && tiposNormais.length === 0) {
-      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência. Motivo: ${outrosText}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
+    if (hasOutros && joinedLabels.length === 0) {
+      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName}, ${age} anos, recebeu uma ocorrência. Motivo: ${outrosText}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
     } else {
-      const parte = tiposNormais || outrosText;
-      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName} recebeu uma ocorrência referente a: ${parte}${hasOutros ? `. Observação: ${outrosText}` : ''}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
+      const parte = joinedLabels || outrosText;
+      msg = `Bom dia! Gostaríamos de informar que o(a) aluno(a) ${studentName}, ${age} anos, recebeu uma ocorrência referente a: ${parte}${hasOutros ? `. Observação: ${outrosText}` : ''}. Aula de ${subject} no dia ${date} às ${time}. Professor(a): ${teacher}.`;
     }
 
     if (continuationMessage) {
@@ -259,8 +289,8 @@ export default function FazerOC() {
 
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', outline: 'none' };
   const lbl = { display: 'block', marginBottom: '6px', fontSize: '13px', color: '#374151', fontWeight: '600' };
-  const outrosType = getOutrosType();
-  const hasOutros = outrosType && selectedTypes.includes(outrosType.id);
+  
+  const hasOutros = getOutrosType() && [occ1, occ2, occ3, occ4].includes(getOutrosType().id);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
@@ -299,11 +329,7 @@ export default function FazerOC() {
         {/* 1. TURMA — primeiro campo */}
         <div>
           <label style={lbl}>1. Selecionar Turma</label>
-          <select
-            style={inp}
-            value={selectedClassId}
-            onChange={e => handleClassChange(e.target.value)}
-          >
+          <select style={inp} value={selectedClassId} onChange={e => handleClassChange(e.target.value)}>
             <option value="">Selecione a turma...</option>
             {classes.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -311,33 +337,43 @@ export default function FazerOC() {
           </select>
         </div>
 
-        {/* 2. ALUNO — filtrado pela turma */}
-        <div>
-          <label style={lbl}>2. Selecionar Aluno</label>
-          {!selectedClassId ? (
-            <div style={{ padding: '12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#9ca3af', border: '1px solid #e5e7eb' }}>
-              Selecione uma turma primeiro para ver os alunos.
-            </div>
-          ) : loadingStudents ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#6b7280', border: '1px solid #e5e7eb' }}>
-              <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Carregando alunos...
-            </div>
-          ) : students.length === 0 ? (
-            <div style={{ padding: '12px', background: '#fef2f2', borderRadius: '8px', fontSize: '13px', color: '#991b1b', border: '1px solid #fecaca' }}>
-              Nenhum aluno encontrado nesta turma.
-            </div>
-          ) : (
-            <select
-              style={inp}
-              value={form.student_id}
-              onChange={e => setForm(p => ({ ...p, student_id: e.target.value }))}
-            >
-              <option value="">Selecione o aluno...</option>
-              {students.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          )}
+        {/* 2. ALUNO e IDADE */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+          <div>
+            <label style={lbl}>2. Selecionar Aluno</label>
+            {!selectedClassId ? (
+              <div style={{ padding: '10px 12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#9ca3af', border: '1px solid #e5e7eb' }}>
+                Selecione uma turma primeiro...
+              </div>
+            ) : loadingStudents ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#6b7280', border: '1px solid #e5e7eb' }}>
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Carregando alunos...
+              </div>
+            ) : students.length === 0 ? (
+              <div style={{ padding: '10px 12px', background: '#fef2f2', borderRadius: '8px', fontSize: '13px', color: '#991b1b', border: '1px solid #fecaca' }}>
+                Nenhum aluno nesta turma.
+              </div>
+            ) : (
+              <select style={inp} value={form.student_id} onChange={e => setForm(p => ({ ...p, student_id: e.target.value }))}>
+                <option value="">Selecione o aluno...</option>
+                {students.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div>
+            <label style={lbl}>Idade</label>
+            <input 
+              type="number" 
+              style={inp} 
+              placeholder="Ex: 14"
+              min="3" 
+              max="25"
+              value={form.student_age} 
+              onChange={e => setForm(p => ({ ...p, student_age: e.target.value }))} 
+            />
+          </div>
         </div>
 
         {/* Professor Relator (caso seja gestor) */}
@@ -357,9 +393,7 @@ export default function FazerOC() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div>
             <label style={lbl}>3. Data da Ocorrência</label>
-            <input type="date" style={inp} value={form.date}
-              min="2020-01-01" max="2030-12-31"
-              onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
+            <input type="date" style={inp} value={form.date} min="2020-01-01" max="2030-12-31" onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
           </div>
           <div>
             <label style={lbl}>4. Horário</label>
@@ -370,52 +404,55 @@ export default function FazerOC() {
         {/* Disciplina */}
         <div>
           <label style={lbl}>5. Disciplina</label>
-          <input type="text" style={inp} placeholder="Ex: Matemática, Português, Ciências..."
-            value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
+          <input type="text" style={inp} placeholder="Ex: Matemática, Português, Ciências..." value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
         </div>
 
-        {/* Tipos de Ocorrência — DINÂMICO */}
+        {/* Ocorrências */}
         <div>
-          <label style={lbl}>6. Selecionar Ocorrências (máx. 4)</label>
-          {incidentTypes.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '8px', fontSize: '14px' }}>
-              Nenhum tipo de ocorrência cadastrado. Peça ao gestor para cadastrar na aba <strong>Ocorrências</strong>.
+          <label style={lbl}>6. Selecionar Ocorrências (Ocorrência 1 é obrigatória)</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 1:</span>
+              <select style={inp} value={occ1} onChange={e => setOcc1(e.target.value)}>
+                <option value="">[ Selecione a ocorrência ▼ ]</option>
+                {incidentTypes.map(type => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {incidentTypes.map(type => {
-                const isSelected = selectedTypes.includes(type.id);
-                const isDisabled = !isSelected && selectedTypes.length >= 4;
-                return (
-                  <button
-                    key={type.id}
-                    onClick={() => !isDisabled && toggleType(type.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      padding: '12px 14px', border: `2px solid ${isSelected ? '#9b1c26' : '#e5e7eb'}`,
-                      borderRadius: '8px', background: isSelected ? '#fdf2f2' : '#fff',
-                      cursor: isDisabled ? 'not-allowed' : 'pointer', textAlign: 'left',
-                      opacity: isDisabled ? 0.45 : 1, transition: 'all 0.15s'
-                    }}
-                  >
-                    {isSelected
-                      ? <CheckSquare size={20} color="#9b1c26" />
-                      : <Square size={20} color="#9ca3af" />}
-                    <span style={{ fontWeight: isSelected ? '600' : '400', color: isSelected ? '#7f1d1d' : '#374151', fontSize: '14px' }}>
-                      {type.name}
-                    </span>
-                    {type.name.toLowerCase() === 'outros' && <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>campo livre</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
 
-          {selectedTypes.length > 0 && (
-            <p style={{ marginTop: '8px', fontSize: '12px', color: '#9b1c26', fontWeight: '600' }}>
-              {selectedTypes.length} / 4 ocorrências selecionadas
-            </p>
-          )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 2:</span>
+              <select style={inp} value={occ2} onChange={e => setOcc2(e.target.value)}>
+                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
+                {incidentTypes.map(type => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 3:</span>
+              <select style={inp} value={occ3} onChange={e => setOcc3(e.target.value)}>
+                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
+                {incidentTypes.map(type => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 4:</span>
+              <select style={inp} value={occ4} onChange={e => setOcc4(e.target.value)}>
+                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
+                {incidentTypes.map(type => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
+            </div>
+
+          </div>
         </div>
 
         {/* Campo "Outros" */}

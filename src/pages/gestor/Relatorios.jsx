@@ -130,7 +130,8 @@ export default function Relatorios() {
 
     setGenerating(true);
     try {
-      const { data: incidents, error: incErr } = await supabase
+      // 1. Buscar ocorrências da escola
+      const { data: allIncidents, error: incErr } = await supabase
         .from('incidents')
         .select(`
           id, student_id, teacher_id, class_id, class_name,
@@ -143,12 +144,17 @@ export default function Relatorios() {
           communications(message)
         `)
         .eq('school_id', schoolId)
-        .gte('incident_date_only', startStr)
-        .lte('incident_date_only', endStr)
         .order('student_id')
         .order('incident_date');
 
       if (incErr) throw incErr;
+
+      // Filtrar no JS para cobrir tanto incident_date_only quanto incident_date/created_at
+      const incidents = (allIncidents || []).filter(inc => {
+        const dStr = inc.incident_date_only || (inc.incident_date ? inc.incident_date.split('T')[0] : null);
+        if (!dStr) return false;
+        return dStr >= startStr && dStr <= endStr;
+      });
 
       if (!incidents || incidents.length === 0) {
         showToast('Nenhuma ocorrência encontrada para esta semana.', 'error');
@@ -175,7 +181,9 @@ export default function Relatorios() {
         .from('reports')
         .upload(fileName, pdfBytes, { contentType: 'application/pdf', upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        throw new Error('Falha no Storage do Supabase (' + uploadError.message + '). Verifique se executou o script fix_supabase_reports.sql');
+      }
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
@@ -221,7 +229,7 @@ export default function Relatorios() {
 
     setGenerating(true);
     try {
-      const { data: incidents, error: incErr } = await supabase
+      const { data: allIncidents, error: incErr } = await supabase
         .from('incidents')
         .select(`
           id, student_id, teacher_id, class_id, class_name,
@@ -235,11 +243,16 @@ export default function Relatorios() {
         `)
         .eq('school_id', schoolId)
         .eq('student_id', indStudentId)
-        .gte('incident_date_only', indStart)
-        .lte('incident_date_only', indEnd)
         .order('incident_date');
 
       if (incErr) throw incErr;
+
+      // Filtrar datas no JS
+      const incidents = (allIncidents || []).filter(inc => {
+        const dStr = inc.incident_date_only || (inc.incident_date ? inc.incident_date.split('T')[0] : null);
+        if (!dStr) return false;
+        return dStr >= indStart && dStr <= indEnd;
+      });
 
       if (!incidents || incidents.length === 0) {
         showToast('Nenhuma ocorrência encontrada para este aluno no período.', 'error');

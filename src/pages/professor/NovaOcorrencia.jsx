@@ -10,7 +10,13 @@ export default function FazerOC() {
   const [myRole, setMyRole] = useState(null);
   const [professorsList, setProfessorsList] = useState([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
+
+  // Turmas e alunos (filtrado por turma)
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [students, setStudents] = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
   const [incidentTypes, setIncidentTypes] = useState([]);
   const [hasMinRequirements, setHasMinRequirements] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -40,9 +46,7 @@ export default function FazerOC() {
     { value: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.', label: 'Por gentileza, converse com o(a) aluno(a) sobre o ocorrido. A parceria entre família e escola é fundamental para seu desenvolvimento escolar.' }
   ];
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -60,7 +64,7 @@ export default function FazerOC() {
     setMyRole(profile.role);
     setTeacherName(profile.name || 'Professor');
 
-    // Buscar professores da escola para permitir seleção caso seja gestor/admin
+    // Buscar professores da escola caso seja gestor/admin
     if (profile.role === 'gestor' || profile.role === 'admin') {
       const { data: profsData } = await supabase
         .from('profiles')
@@ -71,18 +75,18 @@ export default function FazerOC() {
       setProfessorsList(profsData || []);
     }
 
-    // Buscar alunos
-    const { data: studentsData } = await supabase
-      .from('students')
-      .select('id, name, guardian_name, guardian_phone, class_students(class_id, classes(name))')
+    // Buscar turmas (leve — só id e nome)
+    const { data: classesData } = await supabase
+      .from('classes')
+      .select('id, name')
       .eq('school_id', profile.school_id)
-      .eq('status', 'active')
+      .eq('active', true)
       .order('name');
 
-    setStudents(studentsData || []);
-    setHasMinRequirements((studentsData || []).length > 0);
+    setClasses(classesData || []);
+    setHasMinRequirements((classesData || []).length > 0);
 
-    // Buscar tipos de ocorrência DINAMICAMENTE (globais + da escola)
+    // Buscar tipos de ocorrência dinamicamente
     const { data: typesData } = await supabase
       .from('incident_types')
       .select('id, name, school_id, is_default')
@@ -93,6 +97,29 @@ export default function FazerOC() {
 
     setIncidentTypes(typesData || []);
     setLoading(false);
+  };
+
+  // Ao mudar turma: buscar somente alunos daquela turma
+  const handleClassChange = async (classId) => {
+    setSelectedClassId(classId);
+    setForm(p => ({ ...p, student_id: '' })); // limpar aluno anterior
+    setStudents([]);
+
+    if (!classId) return;
+
+    setLoadingStudents(true);
+    const { data: csData } = await supabase
+      .from('class_students')
+      .select('student_id, students(id, name, guardian_name, guardian_phone, class_students(class_id, classes(name)))')
+      .eq('class_id', classId);
+
+    const mapped = (csData || [])
+      .map(cs => cs.students)
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    setStudents(mapped);
+    setLoadingStudents(false);
   };
 
   const toggleType = (typeId) => {
@@ -109,6 +136,7 @@ export default function FazerOC() {
   const getOutrosType = () => incidentTypes.find(t => t.name.toLowerCase() === 'outros');
 
   const handleSubmit = async () => {
+    if (!selectedClassId) return showToast('Selecione uma turma.', 'error');
     if (!form.student_id) return showToast('Selecione um aluno.', 'error');
     if (!form.date) return showToast('Informe a data.', 'error');
     if (!form.time) return showToast('Informe o horário.', 'error');
@@ -122,16 +150,14 @@ export default function FazerOC() {
     setSaving(true);
     try {
       const student = students.find(s => s.id === form.student_id);
-      const classId = student?.class_students?.[0]?.class_id || null;
-      const className = student?.class_students?.[0]?.classes?.name || '';
+      const classId = selectedClassId;
+      const className = classes.find(c => c.id === selectedClassId)?.name || '';
 
-      // Montar lista de tipos selecionados com labels
       const typesListForDB = selectedTypes.map(id => {
         const t = incidentTypes.find(x => x.id === id);
         return { id, label: t?.name || id };
       });
 
-      // Professor que irá assinar a ocorrência
       const finalTeacherId = (myRole === 'gestor' || myRole === 'admin') && selectedTeacherId
         ? selectedTeacherId
         : teacherId;
@@ -139,7 +165,6 @@ export default function FazerOC() {
         ? professorsList.find(p => p.id === selectedTeacherId)?.name || teacherName
         : teacherName;
 
-      // 1. Criar o incident
       const { data: incident, error: incidentError } = await supabase
         .from('incidents')
         .insert({
@@ -162,9 +187,19 @@ export default function FazerOC() {
 
       if (incidentError) throw incidentError;
 
-      // 2. Criar a comunicação para o gestor
       const guardianPhone = student?.guardian_phone || '';
       const dateFormatted = new Date(form.date + 'T12:00:00').toLocaleDateString('pt-BR');
+
+      const msgFinal = buildMessage({
+        studentName: student?.name || '',
+        types: typesListForDB,
+        subject: form.subject,
+        date: dateFormatted,
+        time: form.time,
+        teacher: finalTeacherName,
+        outrosText: hasOutros ? outrosText : null,
+        outrosTypeId: outrosType?.id,
+      });
 
       const { error: commError } = await supabase.from('communications').insert({
         school_id: schoolId,
@@ -182,16 +217,7 @@ export default function FazerOC() {
         student_name: student?.name || '',
         guardian_phone: guardianPhone,
         class_name: className,
-        message: buildMessage({
-          studentName: student?.name || '',
-          types: typesListForDB,
-          subject: form.subject,
-          date: dateFormatted,
-          time: form.time,
-          teacher: finalTeacherName,
-          outrosText: hasOutros ? outrosText : null,
-          outrosTypeId: outrosType?.id,
-        }),
+        message: msgFinal,
       });
 
       if (commError) console.error('Erro ao criar comunicação:', commError);
@@ -202,6 +228,7 @@ export default function FazerOC() {
       setOutrosText('');
       setContinuationMessage('');
       setSelectedTeacherId('');
+      // Manter turma selecionada para facilitar registrar outra ocorrência da mesma turma
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       console.error(err);
@@ -244,10 +271,10 @@ export default function FazerOC() {
   if (!hasMinRequirements) return (
     <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
       <AlertCircle size={64} color="#9b1c26" style={{ marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
-      <h2 style={{ color: '#111827', marginBottom: '8px' }}>Nenhum aluno cadastrado nesta escola</h2>
+      <h2 style={{ color: '#111827', marginBottom: '8px' }}>Nenhuma turma cadastrada nesta escola</h2>
       <p style={{ color: '#6b7280', lineHeight: '1.6' }}>
-        Para registrar uma ocorrência em <strong>FAZER OC</strong>, é necessário que existam <strong>alunos cadastrados</strong> na sua escola.
-        <br />Peça ao gestor escolar para cadastrar ou importar os alunos da escola primeiro.
+        Para registrar uma ocorrência em <strong>FAZER OC</strong>, é necessário que existam <strong>turmas e alunos cadastrados</strong> na escola.
+        <br />Peça ao gestor escolar para cadastrar ou importar os alunos primeiro.
       </p>
     </div>
   );
@@ -269,15 +296,48 @@ export default function FazerOC() {
 
       <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-        {/* Aluno */}
+        {/* 1. TURMA — primeiro campo */}
         <div>
-          <label style={lbl}>1. Selecionar Aluno</label>
-          <select style={inp} value={form.student_id} onChange={e => setForm(p => ({ ...p, student_id: e.target.value }))}>
-            <option value="">Selecione o aluno...</option>
-            {students.map(s => (
-              <option key={s.id} value={s.id}>{s.name}{s.class_students?.[0]?.classes?.name ? ` — ${s.class_students[0].classes.name}` : ''}</option>
+          <label style={lbl}>1. Selecionar Turma</label>
+          <select
+            style={inp}
+            value={selectedClassId}
+            onChange={e => handleClassChange(e.target.value)}
+          >
+            <option value="">Selecione a turma...</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+        </div>
+
+        {/* 2. ALUNO — filtrado pela turma */}
+        <div>
+          <label style={lbl}>2. Selecionar Aluno</label>
+          {!selectedClassId ? (
+            <div style={{ padding: '12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#9ca3af', border: '1px solid #e5e7eb' }}>
+              Selecione uma turma primeiro para ver os alunos.
+            </div>
+          ) : loadingStudents ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#f9fafb', borderRadius: '8px', fontSize: '13px', color: '#6b7280', border: '1px solid #e5e7eb' }}>
+              <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Carregando alunos...
+            </div>
+          ) : students.length === 0 ? (
+            <div style={{ padding: '12px', background: '#fef2f2', borderRadius: '8px', fontSize: '13px', color: '#991b1b', border: '1px solid #fecaca' }}>
+              Nenhum aluno encontrado nesta turma.
+            </div>
+          ) : (
+            <select
+              style={inp}
+              value={form.student_id}
+              onChange={e => setForm(p => ({ ...p, student_id: e.target.value }))}
+            >
+              <option value="">Selecione o aluno...</option>
+              {students.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Professor Relator (caso seja gestor) */}
@@ -296,27 +356,27 @@ export default function FazerOC() {
         {/* Data + Horário */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div>
-            <label style={lbl}>2. Data da Ocorrência</label>
+            <label style={lbl}>3. Data da Ocorrência</label>
             <input type="date" style={inp} value={form.date}
               min="2020-01-01" max="2030-12-31"
               onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
           </div>
           <div>
-            <label style={lbl}>3. Horário</label>
+            <label style={lbl}>4. Horário</label>
             <input type="time" style={inp} value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} />
           </div>
         </div>
 
         {/* Disciplina */}
         <div>
-          <label style={lbl}>4. Disciplina</label>
+          <label style={lbl}>5. Disciplina</label>
           <input type="text" style={inp} placeholder="Ex: Matemática, Português, Ciências..."
             value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
         </div>
 
         {/* Tipos de Ocorrência — DINÂMICO */}
         <div>
-          <label style={lbl}>5. Selecionar Ocorrências (máx. 4)</label>
+          <label style={lbl}>6. Selecionar Ocorrências (máx. 4)</label>
           {incidentTypes.length === 0 ? (
             <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '8px', fontSize: '14px' }}>
               Nenhum tipo de ocorrência cadastrado. Peça ao gestor para cadastrar na aba <strong>Ocorrências</strong>.

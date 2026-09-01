@@ -27,6 +27,7 @@ import ProfessorLayout from './layouts/ProfessorLayout';
 import ProfessorDashboard from './pages/professor/Dashboard';
 import ProfNovaOcorrencia from './pages/professor/NovaOcorrencia';
 import ProfMinhasOcorrencias from './pages/professor/MinhasOcorrencias';
+import ProfessorComunicacoes from './pages/professor/Comunicacoes';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const [session, setSession] = useState(null);
@@ -95,6 +96,7 @@ export default function App() {
           <Route index element={<ProfessorDashboard />} />
           <Route path="nova-ocorrencia" element={<ProfNovaOcorrencia />} />
           <Route path="ocorrencias" element={<ProfMinhasOcorrencias />} />
+          <Route path="comunicacoes" element={<ProfessorComunicacoes />} />
           <Route path="alunos" element={<div>Alunos em breve</div>} />
         </Route>
       </Routes>

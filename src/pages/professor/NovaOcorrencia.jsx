@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import Select from 'react-select';
 
 export default function FazerOC() {
   const [schoolId, setSchoolId] = useState(null);
@@ -414,42 +415,58 @@ export default function FazerOC() {
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 1:</span>
-              <select style={inp} value={occ1} onChange={e => setOcc1(e.target.value)}>
-                <option value="">[ Selecione a ocorrência ▼ ]</option>
-                {incidentTypes.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
-                ))}
-              </select>
+              <div style={{ flex: 1 }}>
+                <Select
+                  options={incidentTypes.map(t => ({ value: t.id, label: t.name }))}
+                  value={occ1 ? { value: occ1, label: incidentTypes.find(t => t.id === occ1)?.name } : null}
+                  onChange={sel => setOcc1(sel ? sel.value : '')}
+                  placeholder="Selecione a ocorrência..."
+                  isClearable
+                  styles={{ control: (base) => ({ ...base, minHeight: '40px', borderColor: '#d1d5db', borderRadius: '6px' }) }}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 2:</span>
-              <select style={inp} value={occ2} onChange={e => setOcc2(e.target.value)}>
-                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
-                {incidentTypes.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
-                ))}
-              </select>
+              <div style={{ flex: 1 }}>
+                <Select
+                  options={incidentTypes.map(t => ({ value: t.id, label: t.name }))}
+                  value={occ2 ? { value: occ2, label: incidentTypes.find(t => t.id === occ2)?.name } : null}
+                  onChange={sel => setOcc2(sel ? sel.value : '')}
+                  placeholder="Selecione a ocorrência... (Opcional)"
+                  isClearable
+                  styles={{ control: (base) => ({ ...base, minHeight: '40px', borderColor: '#d1d5db', borderRadius: '6px' }) }}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 3:</span>
-              <select style={inp} value={occ3} onChange={e => setOcc3(e.target.value)}>
-                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
-                {incidentTypes.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
-                ))}
-              </select>
+              <div style={{ flex: 1 }}>
+                <Select
+                  options={incidentTypes.map(t => ({ value: t.id, label: t.name }))}
+                  value={occ3 ? { value: occ3, label: incidentTypes.find(t => t.id === occ3)?.name } : null}
+                  onChange={sel => setOcc3(sel ? sel.value : '')}
+                  placeholder="Selecione a ocorrência... (Opcional)"
+                  isClearable
+                  styles={{ control: (base) => ({ ...base, minHeight: '40px', borderColor: '#d1d5db', borderRadius: '6px' }) }}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', color: '#6b7280', width: '90px' }}>Ocorrência 4:</span>
-              <select style={inp} value={occ4} onChange={e => setOcc4(e.target.value)}>
-                <option value="">[ Selecione a ocorrência ▼ ] (Opcional)</option>
-                {incidentTypes.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
-                ))}
-              </select>
+              <div style={{ flex: 1 }}>
+                <Select
+                  options={incidentTypes.map(t => ({ value: t.id, label: t.name }))}
+                  value={occ4 ? { value: occ4, label: incidentTypes.find(t => t.id === occ4)?.name } : null}
+                  onChange={sel => setOcc4(sel ? sel.value : '')}
+                  placeholder="Selecione a ocorrência... (Opcional)"
+                  isClearable
+                  styles={{ control: (base) => ({ ...base, minHeight: '40px', borderColor: '#d1d5db', borderRadius: '6px' }) }}
+                />
+              </div>
             </div>
 
           </div>

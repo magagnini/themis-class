@@ -1,6 +1,6 @@
 -- ============================================================
--- THEMIS CLASS — CORREÇÃO COMPLETA DE RELATÓRIOS & STORAGE
--- Execute no SQL Editor do Supabase (Basta colar e clicar em "RUN")
+-- THEMIS CLASS — SCRIPT SQL CORRIGIDO (SEM ERRO DE PERMISSÃO)
+-- Execute no SQL Editor do Supabase (Cole e clique em "RUN")
 -- ============================================================
 
 -- 1. EXTENSÃO UUID
@@ -32,65 +32,22 @@ CREATE TABLE IF NOT EXISTS public.reports (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Garantir colunas na tabela reports se já existia
+-- Garantir colunas na tabela reports
 ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS student_id UUID REFERENCES public.students(id) ON DELETE CASCADE;
 ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS report_type TEXT DEFAULT 'general';
 ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'available';
 ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
--- 4. HABILITAR RLS E CRIAR POLÍTICAS PERMISSIVAS PARA TABELA REPORTS
+-- 4. HABILITAR RLS E POLÍTICAS NA TABELA REPORTS
 ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "reports_select_policy" ON public.reports;
-CREATE POLICY "reports_select_policy" ON public.reports
-  FOR SELECT TO authenticated
-  USING (true);
-
-DROP POLICY IF EXISTS "reports_insert_policy" ON public.reports;
-CREATE POLICY "reports_insert_policy" ON public.reports
-  FOR INSERT TO authenticated
+DROP POLICY IF EXISTS "reports_all_policy" ON public.reports;
+CREATE POLICY "reports_all_policy" ON public.reports
+  FOR ALL TO authenticated
+  USING (true)
   WITH CHECK (true);
 
-DROP POLICY IF EXISTS "reports_update_policy" ON public.reports;
-CREATE POLICY "reports_update_policy" ON public.reports
-  FOR UPDATE TO authenticated
-  USING (true);
-
-DROP POLICY IF EXISTS "reports_delete_policy" ON public.reports;
-CREATE POLICY "reports_delete_policy" ON public.reports
-  FOR DELETE TO authenticated
-  USING (true);
-
--- 5. CONFIGURAÇÃO DO BUCKET DE STORAGE "reports"
--- Cria o bucket reports público caso não exista
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('reports', 'reports', true, 52428800, ARRAY['application/pdf']::text[])
-ON CONFLICT (id) DO UPDATE SET public = true;
-
--- 6. POLÍTICAS DE ACESSO AO STORAGE PARA O BUCKET "reports"
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Allow authenticated download reports" ON storage.objects;
-CREATE POLICY "Allow authenticated download reports" ON storage.objects
-  FOR SELECT TO authenticated, anon
-  USING (bucket_id = 'reports');
-
-DROP POLICY IF EXISTS "Allow authenticated upload reports" ON storage.objects;
-CREATE POLICY "Allow authenticated upload reports" ON storage.objects
-  FOR INSERT TO authenticated, anon
-  WITH CHECK (bucket_id = 'reports');
-
-DROP POLICY IF EXISTS "Allow authenticated update reports" ON storage.objects;
-CREATE POLICY "Allow authenticated update reports" ON storage.objects
-  FOR UPDATE TO authenticated, anon
-  USING (bucket_id = 'reports');
-
-DROP POLICY IF EXISTS "Allow authenticated delete reports" ON storage.objects;
-CREATE POLICY "Allow authenticated delete reports" ON storage.objects
-  FOR DELETE TO authenticated, anon
-  USING (bucket_id = 'reports');
-
--- 7. RECARREGAR AS 51 OCORRÊNCIAS GLOBAIS DO PLACON
+-- 5. RECARREGAR AS 51 OCORRÊNCIAS GLOBAIS DO PLACON
 DELETE FROM public.incident_types WHERE school_id IS NULL;
 
 INSERT INTO public.incident_types (name, description, is_default, school_id, active) VALUES

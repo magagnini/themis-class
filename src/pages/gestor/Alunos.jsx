@@ -42,6 +42,11 @@ export default function GestorAlunos() {
   const [selectedAluno, setSelectedAluno] = useState(null);
   const [alunoHistory, setAlunoHistory] = useState({ recent: [], old_count: 0, loading: false });
 
+  // Exclusão
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [alunoToDelete, setAlunoToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => { fetchData(); }, []);
 
   const handleDownloadTemplate = () => {
@@ -321,6 +326,41 @@ export default function GestorAlunos() {
     }
   };
 
+  const openDeleteModal = (aluno) => {
+    setAlunoToDelete(aluno);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAluno = async () => {
+    if (!alunoToDelete) return;
+    setDeleting(true);
+    try {
+      // Primeiro, remove da turma (tabela class_students)
+      await supabase.from('class_students').delete().eq('student_id', alunoToDelete.id);
+
+      // Tenta deletar o aluno
+      const { error } = await supabase.from('students').delete().eq('id', alunoToDelete.id);
+      
+      if (error) {
+        if (error.message.includes('foreign key') || error.message.includes('violates foreign key constraint')) {
+          showToast('Não é possível excluir o aluno pois ele possui ocorrências registradas.', 'error');
+        } else {
+          showToast('Erro ao excluir aluno: ' + error.message, 'error');
+        }
+      } else {
+        showToast('Aluno excluído com sucesso!');
+        fetchData(); // recarregar lista
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Erro interno ao excluir.', 'error');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+      setAlunoToDelete(null);
+    }
+  };
+
   const filtered = alunos.filter(a => a.name.toLowerCase().includes(busca.toLowerCase()));
 
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' };
@@ -387,9 +427,14 @@ export default function GestorAlunos() {
                   </td>
                   <td style={{ padding: '14px 16px' }}><Badge type={aluno.status || 'active'}>{aluno.status === 'active' ? 'Ativo' : 'Inativo'}</Badge></td>
                   <td style={{ padding: '14px 16px' }}>
-                    <button onClick={() => openHistory(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
-                      <Eye size={14} /> Histórico
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => openHistory(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
+                        <Eye size={14} /> Histórico
+                      </button>
+                      <button onClick={() => openDeleteModal(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #fecaca', borderRadius: '6px', backgroundColor: '#fff5f5', cursor: 'pointer', fontSize: '13px', color: '#dc2626', fontWeight: '500' }} title="Excluir Aluno">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -543,6 +588,25 @@ export default function GestorAlunos() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Modal Excluir Aluno */}
+      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Confirmar Exclusão">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ margin: 0, color: '#374151', fontSize: '14px' }}>
+            Tem certeza que deseja excluir o aluno <strong>{alunoToDelete?.name}</strong>?
+          </p>
+          <div style={{ padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#991b1b', fontSize: '13px' }}>
+            <strong>Atenção:</strong> Esta ação não poderá ser desfeita. Se o aluno já possuir ocorrências registradas, a exclusão não será permitida pelo sistema para preservar o histórico.
+          </div>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <button onClick={() => setShowDeleteModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
+            <button onClick={confirmDeleteAluno} disabled={deleting} style={{ padding: '10px 20px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {deleting ? <Loader2 size={16} className="animar-giro" /> : <Trash2 size={16} />}
+              {deleting ? 'Excluindo...' : 'Sim, Excluir Aluno'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .animar-giro { animation: spin 1s linear infinite; }`}</style>

@@ -47,10 +47,12 @@ export default function Login() {
     clearCachedProfile();
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
 
       if (authError) {
-        setError('E-mail ou senha incorretos. Tente novamente.');
+        // Se for erro de credencial, mostra a mensagem amigável, senão mostra o erro real
+        const isCredentialError = authError.message.toLowerCase().includes('invalid login credentials');
+        setError(isCredentialError ? 'E-mail ou senha incorretos. Tente novamente.' : `Erro: ${authError.message}`);
         setLoading(false);
         return;
       }

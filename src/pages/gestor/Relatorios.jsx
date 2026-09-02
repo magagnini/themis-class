@@ -130,7 +130,7 @@ export default function Relatorios() {
 
     setGenerating(true);
     try {
-      // 1. Buscar ocorrências da escola
+      // 1. Buscar ocorrências da escola sem embedding ambíguo
       const { data: allIncidents, error: incErr } = await supabase
         .from('incidents')
         .select(`
@@ -140,8 +140,7 @@ export default function Relatorios() {
           students(id, name, enrollment, guardian_name, guardian_phone,
             class_students(class_id, classes(name))
           ),
-          profiles(name),
-          communications(message)
+          profiles(name)
         `)
         .eq('school_id', schoolId)
         .order('student_id')
@@ -150,17 +149,34 @@ export default function Relatorios() {
       if (incErr) throw incErr;
 
       // Filtrar no JS para cobrir tanto incident_date_only quanto incident_date/created_at
-      const incidents = (allIncidents || []).filter(inc => {
+      const incidentsFiltered = (allIncidents || []).filter(inc => {
         const dStr = inc.incident_date_only || (inc.incident_date ? inc.incident_date.split('T')[0] : null);
         if (!dStr) return false;
         return dStr >= startStr && dStr <= endStr;
       });
 
-      if (!incidents || incidents.length === 0) {
+      if (!incidentsFiltered || incidentsFiltered.length === 0) {
         showToast('Nenhuma ocorrência encontrada para esta semana.', 'error');
         setGenerating(false);
         return;
       }
+
+      // Buscar mensagens salvas das comunicações sem ambiguidade de FK
+      const incIds = incidentsFiltered.map(i => i.id);
+      const { data: commsData } = await supabase
+        .from('communications')
+        .select('incident_id, message')
+        .in('incident_id', incIds);
+
+      const commsMap = {};
+      (commsData || []).forEach(c => {
+        if (c.incident_id) commsMap[c.incident_id] = c.message;
+      });
+
+      const incidents = incidentsFiltered.map(inc => ({
+        ...inc,
+        communications: commsMap[inc.id] ? [{ message: commsMap[inc.id] }] : []
+      }));
 
       const studentIds = [...new Set(incidents.map(i => i.student_id))];
       const totalStudents = studentIds.length;
@@ -182,7 +198,7 @@ export default function Relatorios() {
         .upload(fileName, pdfBytes, { contentType: 'application/pdf', upsert: true });
 
       if (uploadError) {
-        throw new Error('Falha no Storage do Supabase (' + uploadError.message + '). Verifique se executou o script fix_supabase_reports.sql');
+        throw new Error('Falha no Storage do Supabase (' + uploadError.message + '). Verifique a política do bucket reports.');
       }
 
       const expiresAt = new Date();
@@ -238,8 +254,7 @@ export default function Relatorios() {
           students(id, name, enrollment, guardian_name, guardian_phone,
             class_students(class_id, classes(name))
           ),
-          profiles(name),
-          communications(message)
+          profiles(name)
         `)
         .eq('school_id', schoolId)
         .eq('student_id', indStudentId)
@@ -248,17 +263,34 @@ export default function Relatorios() {
       if (incErr) throw incErr;
 
       // Filtrar datas no JS
-      const incidents = (allIncidents || []).filter(inc => {
+      const incidentsFiltered = (allIncidents || []).filter(inc => {
         const dStr = inc.incident_date_only || (inc.incident_date ? inc.incident_date.split('T')[0] : null);
         if (!dStr) return false;
         return dStr >= indStart && dStr <= indEnd;
       });
 
-      if (!incidents || incidents.length === 0) {
+      if (!incidentsFiltered || incidentsFiltered.length === 0) {
         showToast('Nenhuma ocorrência encontrada para este aluno no período.', 'error');
         setGenerating(false);
         return;
       }
+
+      // Buscar mensagens salvas das comunicações sem ambiguidade de FK
+      const incIds = incidentsFiltered.map(i => i.id);
+      const { data: commsData } = await supabase
+        .from('communications')
+        .select('incident_id, message')
+        .in('incident_id', incIds);
+
+      const commsMap = {};
+      (commsData || []).forEach(c => {
+        if (c.incident_id) commsMap[c.incident_id] = c.message;
+      });
+
+      const incidents = incidentsFiltered.map(inc => ({
+        ...inc,
+        communications: commsMap[inc.id] ? [{ message: commsMap[inc.id] }] : []
+      }));
 
       const totalIncidents = incidents.length;
       const studentName = incidents[0].students?.name || 'Aluno';

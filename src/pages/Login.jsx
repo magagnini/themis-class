@@ -10,19 +10,27 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  // Se já estiver logado, redirecionar automaticamente
   useEffect(() => {
-    // Se o usuário já estiver logado, buscar o perfil e redirecionar
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        supabase.from('profiles').select('role').eq('id', session.user.id).single()
-          .then(({ data }) => {
-            if (data?.role === 'admin') navigate('/admin');
-            else if (data?.role === 'gestor') navigate('/gestor');
-            else if (data?.role === 'professor') navigate('/professor');
-          });
-      }
+      if (session) redirectByRole(session);
     });
-  }, [navigate]);
+  }, []);
+
+  const redirectByRole = async (session) => {
+    if (!session) return;
+    // Tentar buscar perfil no banco
+    const { data } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    const role = data?.role || session.user.user_metadata?.role;
+    if (role === 'admin') navigate('/admin', { replace: true });
+    else if (role === 'gestor') navigate('/gestor', { replace: true });
+    else if (role === 'professor') navigate('/professor', { replace: true });
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -30,53 +38,45 @@ export default function Login() {
     setError('');
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        setError(error.message);
+      if (authError) {
+        setError('E-mail ou senha incorretos. Tente novamente.');
         setLoading(false);
         return;
       }
 
-      if (data?.user) {
-        // Buscar o perfil do usuário (usando maybeSingle para evitar erro caso não exista)
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('role, active, name')
-          .eq('id', data.user.id)
-          .maybeSingle();
+      if (!data?.user) {
+        setError('Não foi possível autenticar. Tente novamente.');
+        setLoading(false);
+        return;
+      }
 
-        if (profileError) {
-          setError('Erro ao buscar perfil: ' + profileError.message);
-        } else if (profileData) {
-          if (profileData.active === false) {
-            await supabase.auth.signOut();
-            setError('Sua conta está suspensa ou desativada. Contate o administrador.');
-            setLoading(false);
-            return;
-          }
-          const role = profileData.role;
-          if (role === 'admin') navigate('/admin');
-          else if (role === 'gestor') navigate('/gestor');
-          else if (role === 'professor') navigate('/professor');
-          else setError('Perfil sem permissão atribuída.');
-        } else {
-          // Se perfil não foi encontrado na tabela profiles
-          // Verificar se temos role no user metadata
-          const metaRole = data.user.user_metadata?.role;
-          if (metaRole === 'admin') navigate('/admin');
-          else if (metaRole === 'gestor') navigate('/gestor');
-          else if (metaRole === 'professor') navigate('/professor');
-          else setError('Perfil do usuário não encontrado na tabela profiles.');
-        }
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('role, active')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (profileData?.active === false) {
+        await supabase.auth.signOut();
+        setError('Sua conta está suspensa. Contate o administrador.');
+        setLoading(false);
+        return;
+      }
+
+      const role = profileData?.role || data.user.user_metadata?.role;
+      if (role === 'admin') navigate('/admin', { replace: true });
+      else if (role === 'gestor') navigate('/gestor', { replace: true });
+      else if (role === 'professor') navigate('/professor', { replace: true });
+      else {
+        setError('Perfil sem permissão atribuída. Contate o administrador.');
+        setLoading(false);
       }
     } catch (err) {
-      setError('Erro de rede: ' + err.message);
+      setError('Erro de conexão. Verifique sua internet e tente novamente.');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -84,8 +84,8 @@ export default function Login() {
       <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
         
         <div style={{ textAlign: 'center', marginBottom: '35px' }}>
-          <h1 style={{ color: '#9b1c26', fontSize: '32px', letterSpacing: '-0.5px', marginBottom: '8px', fontWeight: 'bold', margin: 0 }}>Themis Class</h1>
-          <p style={{ color: '#6b7280', fontSize: '15px', margin: 0 }}>Gestão de Ocorrências Escolares</p>
+          <h1 style={{ color: '#9b1c26', fontSize: '32px', letterSpacing: '-0.5px', marginBottom: '8px', fontWeight: 'bold', margin: 0 }} translate="no">Themis Class</h1>
+          <p style={{ color: '#6b7280', fontSize: '15px', margin: '8px 0 0 0' }}>Gestão de Ocorrências Escolares</p>
         </div>
 
         <form onSubmit={handleLogin}>
@@ -101,11 +101,12 @@ export default function Login() {
               <Mail size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: '#9ca3af' }} />
               <input
                 type="email"
-                style={{ width: '100%', padding: '12px 12px 12px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.2s' }}
+                style={{ width: '100%', padding: '12px 12px 12px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="usuario@escola.com"
                 required
+                autoComplete="email"
               />
             </div>
           </div>
@@ -116,44 +117,29 @@ export default function Login() {
               <Lock size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: '#9ca3af' }} />
               <input
                 type="password"
-                style={{ width: '100%', padding: '12px 12px 12px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.2s' }}
+                style={{ width: '100%', padding: '12px 12px 12px 40px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            style={{ width: '100%', padding: '14px', fontSize: '16px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: '600', transition: 'background-color 0.2s' }}
+            style={{ width: '100%', padding: '14px', fontSize: '16px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: '600' }}
             disabled={loading}
           >
-            {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <LogIn size={18} />}
-            {loading ? 'Entrando...' : 'Entrar no Sistema'}
+            {loading
+              ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Entrando...</>
+              : <><LogIn size={18} /> Entrar no Sistema</>
+            }
           </button>
-
-          <div style={{ textAlign: 'center', marginTop: '25px' }}>
-            <button
-              type="button"
-              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '14px' }}
-            >
-              Esqueci minha senha
-            </button>
-          </div>
         </form>
       </div>
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        input:focus {
-          border-color: #9b1c26 !important;
-          box-shadow: 0 0 0 2px rgba(155, 28, 38, 0.2);
-        }
-      `}</style>
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

@@ -232,7 +232,10 @@ export default function FazerOC() {
       if (commError) console.error('Erro ao criar comunicação:', commError);
 
       setSuccess(true);
+      // Reset completo — incluindo turma/aluno para evitar tela branca
       setForm({ student_id: '', student_age: '', date: new Date().toISOString().split('T')[0], time: '', subject: '' });
+      setSelectedClassId('');
+      setStudents([]);
       setOcc1('');
       setOcc2('');
       setOcc3('');
@@ -240,8 +243,10 @@ export default function FazerOC() {
       setOutrosText('');
       setContinuationMessage('');
       setSelectedTeacherId('');
-      
-      setTimeout(() => setSuccess(false), 5000);
+
+      // Subir para o topo da página após registrar
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => setSuccess(false), 6000);
     } catch (err) {
       console.error(err);
       showToast('Erro ao registrar ocorrência: ' + err.message, 'error');

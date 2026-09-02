@@ -29,34 +29,84 @@ import ProfNovaOcorrencia from './pages/professor/NovaOcorrencia';
 import ProfMinhasOcorrencias from './pages/professor/MinhasOcorrencias';
 import ProfessorComunicacoes from './pages/professor/Comunicacoes';
 
+// Carregando global com spinner vinho - sem texto "Carregando" que ficava parecendo tela branca
+function LoadingScreen() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f3f4f6',
+      gap: '16px'
+    }}>
+      <div style={{
+        width: '44px', height: '44px',
+        border: '4px solid #fecaca',
+        borderTopColor: '#9b1c26',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <p style={{ color: '#9b1c26', fontWeight: '600', fontSize: '15px', margin: 0 }}>Themis Class</p>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ProtectedRoute robusto: usa onAuthStateChange para reagir instantaneamente à sessão
 function ProtectedRoute({ children, allowedRoles }) {
-  const [session, setSession] = useState(null);
+  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'denied'
   const [role, setRole] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        supabase
+    let cancelled = false;
+
+    async function checkAuth(session) {
+      if (!session) {
+        if (!cancelled) setStatus('denied');
+        return;
+      }
+      try {
+        const { data } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', session.user.id)
-          .single()
-          .then(({ data }) => {
-            setRole(data?.role);
-            setLoading(false);
-          });
-      } else {
-        setLoading(false);
+          .single();
+
+        if (cancelled) return;
+
+        const userRole = data?.role || session.user.user_metadata?.role;
+        setRole(userRole);
+
+        if (allowedRoles && !allowedRoles.includes(userRole)) {
+          setStatus('denied');
+        } else {
+          setStatus('ok');
+        }
+      } catch {
+        if (!cancelled) setStatus('denied');
       }
+    }
+
+    // 1. Verificar sessão atual imediatamente
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkAuth(session);
     });
-  }, []);
 
-  if (loading) return <div>Carregando...</div>;
-  if (!session) return <Navigate to="/login" />;
-  if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/login" />;
+    // 2. Ouvir mudanças de auth (login/logout) para reagir sem precisar recarregar
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      checkAuth(session);
+    });
 
+    return () => {
+      cancelled = true;
+      subscription?.unsubscribe();
+    };
+  }, [allowedRoles?.join(',')]);
+
+  if (status === 'loading') return <LoadingScreen />;
+  if (status === 'denied') return <Navigate to="/login" replace />;
   return children;
 }
 
@@ -65,7 +115,7 @@ export default function App() {
     <BrowserRouter>
       <ToastContainer />
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         
         {/* Admin Routes */}

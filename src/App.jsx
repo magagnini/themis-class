@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from './lib/supabase';
+import { getCachedProfile, setCachedProfile, clearCachedProfile } from './lib/userCache';
 import { ToastContainer } from './components/ui/Toast';
 import './index.css';
 
@@ -29,17 +30,12 @@ import ProfNovaOcorrencia from './pages/professor/NovaOcorrencia';
 import ProfMinhasOcorrencias from './pages/professor/MinhasOcorrencias';
 import ProfessorComunicacoes from './pages/professor/Comunicacoes';
 
-// Carregando global com spinner vinho - sem texto "Carregando" que ficava parecendo tela branca
 function LoadingScreen() {
   return (
     <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#f3f4f6',
-      gap: '16px'
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: '#f3f4f6', gap: '16px'
     }}>
       <div style={{
         width: '44px', height: '44px',
@@ -48,62 +44,79 @@ function LoadingScreen() {
         borderRadius: '50%',
         animation: 'spin 0.8s linear infinite'
       }} />
-      <p style={{ color: '#9b1c26', fontWeight: '600', fontSize: '15px', margin: 0 }}>Themis Class</p>
+      <p style={{ color: '#9b1c26', fontWeight: '600', fontSize: '15px', margin: 0 }} translate="no">Themis Class</p>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// ProtectedRoute robusto: usa onAuthStateChange para reagir instantaneamente à sessão
+// ProtectedRoute otimizado: usa cache sessionStorage para evitar query ao banco a cada navegação
 function ProtectedRoute({ children, allowedRoles }) {
-  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'denied'
-  const [role, setRole] = useState(null);
+  const [status, setStatus] = useState(() => {
+    // Verificação síncrona do cache ANTES do primeiro render — elimina o flash de loading
+    const cached = getCachedProfile();
+    if (cached && allowedRoles && !allowedRoles.includes(cached.role)) return 'denied';
+    if (cached) return 'ok';
+    return 'loading';
+  });
+
+  const checkedRef = useRef(false);
 
   useEffect(() => {
+    if (status !== 'loading') return; // já resolvido via cache
+    if (checkedRef.current) return;
+    checkedRef.current = true;
+
     let cancelled = false;
 
-    async function checkAuth(session) {
-      if (!session) {
-        if (!cancelled) setStatus('denied');
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        if (!cancelled) { clearCachedProfile(); setStatus('denied'); }
         return;
       }
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
 
-        if (cancelled) return;
-
-        const userRole = data?.role || session.user.user_metadata?.role;
-        setRole(userRole);
-
-        if (allowedRoles && !allowedRoles.includes(userRole)) {
-          setStatus('denied');
-        } else {
-          setStatus('ok');
+      // Verificar cache novamente (pode ter sido preenchido por outro ProtectedRoute)
+      const cached = getCachedProfile();
+      if (cached) {
+        if (!cancelled) {
+          const ok = !allowedRoles || allowedRoles.includes(cached.role);
+          setStatus(ok ? 'ok' : 'denied');
         }
-      } catch {
-        if (!cancelled) setStatus('denied');
+        return;
       }
+
+      // Buscar do banco apenas se necessário
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, name, email, role, school_id, active')
+        .eq('id', session.user.id)
+        .single();
+
+      if (cancelled) return;
+
+      if (!profile) { setStatus('denied'); return; }
+
+      setCachedProfile(profile);
+      const ok = !allowedRoles || allowedRoles.includes(profile.role);
+      setStatus(ok ? 'ok' : 'denied');
     }
 
-    // 1. Verificar sessão atual imediatamente
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      checkAuth(session);
-    });
+    checkAuth();
 
-    // 2. Ouvir mudanças de auth (login/logout) para reagir sem precisar recarregar
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      checkAuth(session);
+    // Limpar cache no logout
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        clearCachedProfile();
+        setStatus('denied');
+      }
     });
 
     return () => {
       cancelled = true;
       subscription?.unsubscribe();
     };
-  }, [allowedRoles?.join(',')]);
+  }, []);
 
   if (status === 'loading') return <LoadingScreen />;
   if (status === 'denied') return <Navigate to="/login" replace />;
@@ -117,7 +130,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
-        
+
         {/* Admin Routes */}
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout /></ProtectedRoute>}>
           <Route index element={<AdminDashboard />} />
@@ -125,9 +138,9 @@ export default function App() {
           <Route path="escolas/:id" element={<AdminSchoolDetails />} />
           <Route path="usuarios" element={<AdminUsers />} />
           <Route path="ocorrencias" element={<AdminOcorrencias />} />
-          <Route path="configuracoes" element={<div>Configurações da Plataforma em breve</div>} />
+          <Route path="configuracoes" element={<div style={{padding:'2rem'}}>Configurações da Plataforma em breve</div>} />
         </Route>
-        
+
         {/* Gestor Routes */}
         <Route path="/gestor" element={<ProtectedRoute allowedRoles={['gestor', 'admin']}><GestorLayout /></ProtectedRoute>}>
           <Route index element={<GestorDashboard />} />
@@ -147,7 +160,7 @@ export default function App() {
           <Route path="nova-ocorrencia" element={<ProfNovaOcorrencia />} />
           <Route path="ocorrencias" element={<ProfMinhasOcorrencias />} />
           <Route path="comunicacoes" element={<ProfessorComunicacoes />} />
-          <Route path="alunos" element={<div>Alunos em breve</div>} />
+          <Route path="alunos" element={<div style={{padding:'2rem'}}>Alunos em breve</div>} />
         </Route>
       </Routes>
     </BrowserRouter>

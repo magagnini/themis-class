@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getUserProfile } from '../../lib/userCache';
 import { BookOpen, Users, AlertTriangle, AlertCircle, Loader2, Clock, Trophy } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -19,15 +20,8 @@ export default function Dashboard() {
   const carregarDados = async () => {
     setCarregando(true);
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) { setCarregando(false); return; }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('school_id, name')
-      .eq('id', userData.user.id)
-      .single();
-
+    // Usa cache — zero queries extras ao banco para saber quem é o usuário
+    const profile = await getUserProfile();
     if (!profile?.school_id) { setCarregando(false); return; }
 
     const schoolId = profile.school_id;
@@ -38,32 +32,39 @@ export default function Dashboard() {
     const fimDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1).toISOString();
     const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString();
 
-    // Buscar incidents do mês
+    // Calcular início dos 6 meses para o gráfico
+    const inicioGrafico = new Date(hoje.getFullYear(), hoje.getMonth() - 5, 1).toISOString();
+
+    // UMA única query buscando todos os dados necessários (mês atual + 6 meses para gráfico)
+    // em PARALELO com nada mais para aguardar — sem await encadeados
     const { data: incidents } = await supabase
       .from('incidents')
       .select('id, student_id, severity, created_at, incident_date, class_name, students(name), incident_types_list, description')
       .eq('school_id', schoolId)
-      .gte('created_at', inicioMes)
+      .gte('created_at', inicioGrafico)
       .order('created_at', { ascending: false });
 
     const todasOcorrencias = incidents || [];
 
-    const ocHoje = todasOcorrencias.filter(i => {
+    // Separar ocorrências do mês atual vs. históricas (para o gráfico)
+    const ocorrenciasMes = todasOcorrencias.filter(i => i.created_at >= inicioMes);
+
+    const ocHoje = ocorrenciasMes.filter(i => {
       const d = i.incident_date || i.created_at;
       return d >= inicioDia && d < fimDia;
     }).length;
 
-    const alunosUnicos = new Set(todasOcorrencias.map(i => i.student_id)).size;
-    const graves = todasOcorrencias.filter(i => i.severity === 'high').length;
+    const alunosUnicos = new Set(ocorrenciasMes.map(i => i.student_id)).size;
+    const graves = ocorrenciasMes.filter(i => i.severity === 'high').length;
 
     setStats({
       ocorrencias_hoje: ocHoje,
       alunos_envolvidos: alunosUnicos,
-      total_ocorrencias: todasOcorrencias.length,
+      total_ocorrencias: ocorrenciasMes.length,
       graves,
     });
 
-    const recentes = todasOcorrencias.slice(0, 5).map(i => {
+    const recentes = ocorrenciasMes.slice(0, 5).map(i => {
       const tipos = (i.incident_types_list || []).map(t => t.label).join(', ');
       const nomeAluno = i.students?.name || 'Aluno';
       return {
@@ -74,9 +75,9 @@ export default function Dashboard() {
     });
     setAtividades(recentes);
 
-    // Calcular Top 10 Turmas
+    // Top 10 Turmas (baseado no mês)
     const turmasCount = {};
-    todasOcorrencias.forEach(i => {
+    ocorrenciasMes.forEach(i => {
       const tName = i.class_name || 'Sem turma';
       turmasCount[tName] = (turmasCount[tName] || 0) + 1;
     });
@@ -86,9 +87,9 @@ export default function Dashboard() {
       .slice(0, 10);
     setTopClasses(turmasArray);
 
-    // Calcular Top 5 Alunos
+    // Top 5 Alunos (baseado no mês)
     const alunosCount = {};
-    todasOcorrencias.forEach(i => {
+    ocorrenciasMes.forEach(i => {
       const sId = i.student_id;
       if (!sId) return;
       if (!alunosCount[sId]) {
@@ -101,7 +102,7 @@ export default function Dashboard() {
       .slice(0, 5);
     setTopStudents(alunosArray);
 
-    // Gráfico de linha dos 6 meses (vamos buscar todos do ano letivo para o gráfico de 6 meses)
+    // Gráfico dos 6 meses — calculado dos dados já carregados (sem nova query!)
     const meses = [];
     for (let m = 5; m >= 0; m--) {
       const d = new Date(hoje.getFullYear(), hoje.getMonth() - m, 1);
@@ -111,15 +112,9 @@ export default function Dashboard() {
       meses.push({ name: nome.charAt(0).toUpperCase() + nome.slice(1, 3), inicioM, fimM });
     }
 
-    const { data: incidentsGrafico } = await supabase
-      .from('incidents')
-      .select('created_at')
-      .eq('school_id', schoolId)
-      .gte('created_at', meses[0].inicioM);
-
     const dadosMeses = meses.map(({ name, inicioM, fimM }) => ({
       name,
-      total: (incidentsGrafico || []).filter(i => i.created_at >= inicioM && i.created_at < fimM).length,
+      total: todasOcorrencias.filter(i => i.created_at >= inicioM && i.created_at < fimM).length,
     }));
     setDadosGrafico(dadosMeses);
 

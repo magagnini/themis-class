@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { setCachedProfile, getCachedProfile, clearCachedProfile } from '../lib/userCache';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Lock, Mail, Loader2 } from 'lucide-react';
 
@@ -11,48 +10,38 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // Se já estiver logado, redirecionar sem query ao banco usando o cache
+  // Se já estiver logado, redirecionar automaticamente
   useEffect(() => {
-    const cached = getCachedProfile();
-    if (cached?.role) {
-      navigateByRole(cached.role);
-      return;
-    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) redirectByRole(session);
     });
   }, []);
 
-  const navigateByRole = (role) => {
+  const redirectByRole = async (session) => {
+    if (!session) return;
+    // Tentar buscar perfil no banco
+    const { data } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    const role = data?.role || session.user.user_metadata?.role;
     if (role === 'admin') navigate('/admin', { replace: true });
     else if (role === 'gestor') navigate('/gestor', { replace: true });
     else if (role === 'professor') navigate('/professor', { replace: true });
-  };
-
-  const redirectByRole = async (session) => {
-    if (!session) return;
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, name, email, role, school_id, active')
-      .eq('id', session.user.id)
-      .maybeSingle();
-    if (data) { setCachedProfile(data); navigateByRole(data.role); }
-    else navigateByRole(session.user.user_metadata?.role);
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    clearCachedProfile();
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (authError) {
-        // Se for erro de credencial, mostra a mensagem amigável, senão mostra o erro real
-        const isCredentialError = authError.message.toLowerCase().includes('invalid login credentials');
-        setError(isCredentialError ? 'E-mail ou senha incorretos. Tente novamente.' : `Erro: ${authError.message}`);
+        setError('E-mail ou senha incorretos. Tente novamente.');
         setLoading(false);
         return;
       }
@@ -63,30 +52,28 @@ export default function Login() {
         return;
       }
 
-      // Busca perfil completo uma única vez e salva no cache
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, name, email, role, school_id, active')
+        .select('role, active')
         .eq('id', data.user.id)
         .maybeSingle();
 
       if (profileData?.active === false) {
         await supabase.auth.signOut();
-        clearCachedProfile();
         setError('Sua conta está suspensa. Contate o administrador.');
         setLoading(false);
         return;
       }
 
-      if (profileData) {
-        setCachedProfile(profileData); // cache preenchido — ProtectedRoute não precisará consultar o banco
-        navigateByRole(profileData.role);
-      } else {
-        const role = data.user.user_metadata?.role;
-        if (role) navigateByRole(role);
-        else { setError('Perfil sem permissão atribuída. Contate o administrador.'); setLoading(false); }
+      const role = profileData?.role || data.user.user_metadata?.role;
+      if (role === 'admin') navigate('/admin', { replace: true });
+      else if (role === 'gestor') navigate('/gestor', { replace: true });
+      else if (role === 'professor') navigate('/professor', { replace: true });
+      else {
+        setError('Perfil sem permissão atribuída. Contate o administrador.');
+        setLoading(false);
       }
-    } catch {
+    } catch (err) {
       setError('Erro de conexão. Verifique sua internet e tente novamente.');
       setLoading(false);
     }

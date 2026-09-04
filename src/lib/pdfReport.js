@@ -225,30 +225,34 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
         y -= 2;
       }
 
-      y -= 10;
+      // Espaço e campo de assinatura com "Ass:"
+      checkPageBreak(50);
+      y -= 8;
+      page.drawText('Ass:', { x: MARGIN, y: y - 2, size: 9, font: fontBold, color: DARK });
+      page.drawLine({ start: { x: MARGIN + 30, y }, end: { x: MARGIN + 280, y }, thickness: 0.8, color: BLACK });
+      
+      // Espaço de uma linha completa entre a assinatura e o início da próxima ocorrência
+      y -= 18;
       drawLine();
+      y -= 14;
     }
 
     if (reportType === 'general') {
-      // Espaço de assinatura apenas no relatório geral (conforme original) ou no individual também? 
-      // O prompt não menciona remover a assinatura no individual, mas simplificou a saída. Vamos manter no geral.
       checkPageBreak(90);
       y -= 4;
       drawText('DECLARAÇÃO DO RESPONSÁVEL:', MARGIN, 9, fontBold, DARK);
       drawText('"Declaro estar ciente das ocorrências e orientações apresentadas."', MARGIN + 6, 9, fontReg, DARK, CONTENT_W - 12);
       y -= 10;
-      drawText('Assinatura do responsável:', MARGIN, 9, fontReg, DARK);
-      y -= 4;
-      page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + 260, y }, thickness: 0.8, color: BLACK });
-      y -= 14;
-      drawText('Nome do responsável:', MARGIN, 9, fontReg, DARK);
-      y -= 4;
-      page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + 260, y }, thickness: 0.8, color: BLACK });
-      y -= 14;
+      page.drawText('Ass. do responsável:', { x: MARGIN, y: y - 2, size: 9, font: fontBold, color: DARK });
+      page.drawLine({ start: { x: MARGIN + 110, y }, end: { x: MARGIN + 320, y }, thickness: 0.8, color: BLACK });
+      y -= 16;
+      page.drawText('Nome do responsável:', { x: MARGIN, y: y - 2, size: 9, font: fontReg, color: DARK });
+      page.drawLine({ start: { x: MARGIN + 110, y }, end: { x: MARGIN + 320, y }, thickness: 0.8, color: BLACK });
+      y -= 16;
       drawText('Data:  ____ / ____ / ______', MARGIN, 9, fontReg, DARK);
-      y -= 12;
+      y -= 14;
       drawLine();
-      y -= 6;
+      y -= 8;
     }
   }
 

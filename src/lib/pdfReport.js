@@ -158,8 +158,11 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
     }
 
     // Cada ocorrência do aluno
-    for (const inc of incs) {
-      checkPageBreak(130);
+    for (let incIdx = 0; incIdx < incs.length; incIdx++) {
+      const inc = incs[incIdx];
+      const incNum = inc.incident_number || (incIdx + 1 < 10 ? '0' + (incIdx + 1) : String(incIdx + 1));
+
+      checkPageBreak(140);
       const dateStr = inc.incident_date_only
         ? new Date(inc.incident_date_only + 'T12:00:00').toLocaleDateString('pt-BR')
         : inc.incident_date
@@ -177,7 +180,7 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
       const msgSalva = inc.communications?.[0]?.message || null;
 
       if (reportType === 'general') {
-        page.drawText('OCORRÊNCIA', { x: MARGIN, y, size: 9, font: fontBold, color: GRAY });
+        page.drawText(`OCORRÊNCIA Nº ${incNum}`, { x: MARGIN, y, size: 9.5, font: fontBold, color: WINE });
         y -= 14;
         drawText(`Data: ${dateStr}   Horário: ${timeStr}   Disciplina: ${subjectStr}   Professor(a): ${teacherStr}`, MARGIN, 9, fontReg, DARK, CONTENT_W);
         y -= 2;
@@ -187,7 +190,9 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
           drawText(`Obs: ${outrosDesc}`, MARGIN + 10, 9, fontReg, GRAY, CONTENT_W - 10);
         }
       } else {
-        // Formato pedido pelo prompt para relatório individual
+        // Formato para relatório individual com identificação clara da ocorrência
+        drawText(`OCORRÊNCIA Nº ${incNum}`, MARGIN, 10, fontBold, WINE);
+        y -= 2;
         drawText(`Data: ${dateStr}`, MARGIN, 10, fontReg, DARK);
         drawText(`Horário: ${timeStr}`, MARGIN, 10, fontReg, DARK);
         drawText(`Disciplina: ${subjectStr}`, MARGIN, 10, fontReg, DARK);
@@ -222,19 +227,19 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
             drawText(`]`, MARGIN, 9, fontReg, DARK, CONTENT_W);
           }
         }
-        y -= 2;
+        y -= 4;
       }
 
       // Espaço e campo de assinatura com "Ass:"
       checkPageBreak(50);
       y -= 8;
-      page.drawText('Ass:', { x: MARGIN, y: y - 2, size: 9, font: fontBold, color: DARK });
-      page.drawLine({ start: { x: MARGIN + 30, y }, end: { x: MARGIN + 280, y }, thickness: 0.8, color: BLACK });
+      page.drawText('Ass:', { x: MARGIN, y: y - 2, size: 9.5, font: fontBold, color: DARK });
+      page.drawLine({ start: { x: MARGIN + 32, y }, end: { x: MARGIN + 320, y }, thickness: 0.8, color: BLACK });
       
-      // Espaço de uma linha completa entre a assinatura e o início da próxima ocorrência
-      y -= 18;
+      // Espaço de uma linha completa antes da divisória e da próxima ocorrência
+      y -= 20;
       drawLine();
-      y -= 14;
+      y -= 16;
     }
 
     if (reportType === 'general') {

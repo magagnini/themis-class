@@ -31,19 +31,7 @@ export default function MinhasOcorrencias() {
     const { data, error } = await supabase
       .from('incidents')
       .select(`
-        id,
-        student_id,
-        student_age,
-        class_name,
-        subject,
-        incident_date,
-        incident_date_only,
-        incident_time,
-        incident_types_list,
-        outros_description,
-        description,
-        status,
-        created_at,
+        *,
         students ( id, name ),
         profiles ( name ),
         communications ( id, status, whatsapp_sent_at )
@@ -108,9 +96,16 @@ export default function MinhasOcorrencias() {
                 {/* Header do Card */}
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#111827', fontWeight: '700' }}>
-                      {studentName} {inc.student_age ? `(${inc.student_age} anos)` : ''}
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                      {inc.incident_number && (
+                        <span style={{ backgroundColor: '#fdf2f2', color: '#9b1c26', padding: '2px 8px', borderRadius: '6px', fontWeight: '700', fontSize: '12px' }}>
+                          Nº {inc.incident_number}
+                        </span>
+                      )}
+                      <h3 style={{ margin: 0, fontSize: '16px', color: '#111827', fontWeight: '700' }}>
+                        {studentName} {inc.student_age ? `(${inc.student_age} anos)` : ''}
+                      </h3>
+                    </div>
                     <div style={{ fontSize: '13px', color: '#6b7280', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                       {inc.class_name && <span>Turma: <strong>{inc.class_name}</strong></span>}
                       {inc.subject && <span>Disciplina: <strong>{inc.subject}</strong></span>}

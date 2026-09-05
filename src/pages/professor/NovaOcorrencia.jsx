@@ -172,26 +172,47 @@ export default function FazerOC() {
         ? professorsList.find(p => p.id === selectedTeacherId)?.name || teacherName
         : teacherName;
 
-      const { data: incident, error: incidentError } = await supabase
+      // 1. Gerar número de ocorrência único e sequencial para a escola (01, 02, 03...)
+      const { count: schoolIncidentCount } = await supabase
         .from('incidents')
-        .insert({
-          school_id: schoolId,
-          student_id: form.student_id,
-          student_age: age,
-          teacher_id: finalTeacherId,
-          class_id: classId,
-          incident_date: new Date(form.date + 'T' + (form.time || '12:00') + ':00').toISOString(),
-          incident_date_only: form.date,
-          incident_time: form.time,
-          subject: form.subject,
-          incident_types_list: typesListForDB,
-          outros_description: hasOutros ? outrosText : null,
-          status: 'pending',
-          severity: 'low',
-          description: typesListForDB.map(t => t.label).join(', '),
-        })
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
+
+      const nextSeq = (schoolIncidentCount || 0) + 1;
+      const incidentNumber = String(nextSeq).padStart(2, '0');
+
+      const incidentPayload = {
+        school_id: schoolId,
+        student_id: form.student_id,
+        student_age: age,
+        teacher_id: finalTeacherId,
+        class_id: classId,
+        class_name: className,
+        incident_date: new Date(form.date + 'T' + (form.time || '12:00') + ':00').toISOString(),
+        incident_date_only: form.date,
+        incident_time: form.time,
+        subject: form.subject,
+        incident_types_list: typesListForDB,
+        outros_description: hasOutros ? outrosText : null,
+        status: 'pending',
+        severity: 'low',
+        description: typesListForDB.map(t => t.label).join(', '),
+        incident_number: incidentNumber,
+      };
+
+      let { data: incident, error: incidentError } = await supabase
+        .from('incidents')
+        .insert(incidentPayload)
         .select()
         .single();
+
+      // Fallback seguro caso a coluna incident_number não esteja na tabela incidents
+      if (incidentError && incidentError.message?.includes('incident_number')) {
+        delete incidentPayload.incident_number;
+        const retry = await supabase.from('incidents').insert(incidentPayload).select().single();
+        incident = retry.data;
+        incidentError = retry.error;
+      }
 
       if (incidentError) throw incidentError;
 
@@ -210,7 +231,7 @@ export default function FazerOC() {
         outrosTypeId: outrosType?.id,
       });
 
-      const { error: commError } = await supabase.from('communications').insert({
+      const commPayload = {
         school_id: schoolId,
         incident_id: incident.id,
         student_id: form.student_id,
@@ -227,9 +248,16 @@ export default function FazerOC() {
         guardian_phone: guardianPhone,
         class_name: className,
         message: msgFinal,
-      });
+        incident_number: incidentNumber,
+      };
 
-      if (commError) console.error('Erro ao criar comunicação:', commError);
+      const { error: commError } = await supabase.from('communications').insert(commPayload);
+      if (commError && commError.message?.includes('incident_number')) {
+        delete commPayload.incident_number;
+        await supabase.from('communications').insert(commPayload);
+      } else if (commError) {
+        console.error('Erro ao criar comunicação:', commError);
+      }
 
       setSuccess(true);
       // Reset completo — incluindo turma/aluno para evitar tela branca

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getUserProfile } from '../../lib/userCache';
-import { BookOpen, Users, AlertTriangle, AlertCircle, Loader2, Clock, Trophy } from 'lucide-react';
+import { BookOpen, Users, AlertTriangle, Loader2, Clock, Trophy } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
@@ -125,7 +125,6 @@ export default function Dashboard() {
     { label: 'Ocorrências Hoje', valor: stats.ocorrencias_hoje, icone: <AlertTriangle />, cor: '#f59e0b' },
     { label: 'Alunos Envolvidos', valor: stats.alunos_envolvidos, icone: <Users />, cor: '#3b82f6' },
     { label: 'Ocorrências no Mês', valor: stats.total_ocorrencias, icone: <BookOpen />, cor: '#9ca3af' },
-    { label: 'Graves (Mês)', valor: stats.graves, icone: <AlertCircle />, cor: '#ef4444' },
   ];
 
   if (carregando) {

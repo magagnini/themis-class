@@ -4,7 +4,7 @@ import { supabase, supabaseAdminAuth } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { School, Lock, Unlock, Loader2, Plus, UserPlus, Settings } from 'lucide-react';
+import { School, Lock, Unlock, Loader2, Plus, UserPlus, Settings, Trash2 } from 'lucide-react';
 
 export default function AdminSchools() {
   const navigate = useNavigate();
@@ -17,6 +17,9 @@ export default function AdminSchools() {
     gestorName: '', gestorEmail: '', gestorPassword: '',
     max_professors: 30
   });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [schoolToDelete, setSchoolToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { fetchSchools(); }, []);
 
@@ -82,6 +85,29 @@ export default function AdminSchools() {
     else { showToast(`Escola ${newStatus === 'active' ? 'ativada' : 'bloqueada'}.`); fetchSchools(); }
   };
 
+  const openDeleteModal = (school) => {
+    setSchoolToDelete(school);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteSchool = async () => {
+    if (!schoolToDelete) return;
+    setDeleting(true);
+    
+    const { error } = await supabase.from('schools').delete().eq('id', schoolToDelete.id);
+    
+    if (error) {
+      showToast('Erro ao excluir escola: ' + error.message, 'error');
+    } else {
+      showToast('Escola e dados relacionados excluídos com sucesso!');
+      fetchSchools();
+    }
+    
+    setDeleting(false);
+    setShowDeleteModal(false);
+    setSchoolToDelete(null);
+  };
+
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' };
   const lbl = { display: 'block', marginBottom: '6px', fontSize: '13px', color: '#374151', fontWeight: '500' };
 
@@ -125,6 +151,10 @@ export default function AdminSchools() {
                       <button onClick={() => toggleStatus(school)}
                         style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: `1px solid ${school.status === 'active' ? '#fca5a5' : '#6ee7b7'}`, borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: school.status === 'active' ? '#ef4444' : '#059669', fontWeight: '500' }}>
                         {school.status === 'active' ? <><Lock size={14} /> Bloquear</> : <><Unlock size={14} /> Ativar</>}
+                      </button>
+                      <button onClick={() => openDeleteModal(school)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #fecaca', borderRadius: '6px', background: '#fff5f5', cursor: 'pointer', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
+                        <Trash2 size={14} /> Excluir
                       </button>
                     </div>
                   </td>
@@ -178,6 +208,30 @@ export default function AdminSchools() {
             {saving ? <Loader2 size={16} className="animar-giro" /> : null}
             {saving ? 'Criando...' : 'Finalizar Cadastro'}
           </button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Confirmar Exclusão de Escola">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ margin: 0, color: '#374151', fontSize: '14px' }}>
+            Tem certeza que deseja excluir a escola <strong>{schoolToDelete?.name}</strong>?
+          </p>
+          <div style={{ padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#991b1b', fontSize: '13px' }}>
+            <strong>ATENÇÃO MÁXIMA:</strong> Esta ação <strong>NÃO</strong> pode ser desfeita.
+            A exclusão da escola apagará permanentemente do sistema:
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+              <li>Todos os alunos e turmas vinculados a esta escola</li>
+              <li>Todas as ocorrências registradas</li>
+              <li>Todos os perfis de professores e gestores</li>
+            </ul>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <button onClick={() => setShowDeleteModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
+            <button onClick={confirmDeleteSchool} disabled={deleting} style={{ padding: '10px 20px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {deleting ? <Loader2 size={16} className="animar-giro" /> : <Trash2 size={16} />}
+              {deleting ? 'Excluindo...' : 'Sim, Excluir Escola e Dados'}
+            </button>
+          </div>
         </div>
       </Modal>
 

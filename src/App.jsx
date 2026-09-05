@@ -26,7 +26,6 @@ import Configuracoes from './pages/gestor/Configuracoes';
 import ProfessorLayout from './layouts/ProfessorLayout';
 import ProfessorDashboard from './pages/professor/Dashboard';
 import ProfNovaOcorrencia from './pages/professor/NovaOcorrencia';
-import ProfMinhasOcorrencias from './pages/professor/MinhasOcorrencias';
 import ProfessorComunicacoes from './pages/professor/Comunicacoes';
 
 // Carregando global com spinner vinho - sem texto "Carregando" que ficava parecendo tela branca
@@ -145,9 +144,8 @@ export default function App() {
         <Route path="/professor" element={<ProtectedRoute allowedRoles={['professor']}><ProfessorLayout /></ProtectedRoute>}>
           <Route index element={<ProfessorDashboard />} />
           <Route path="nova-ocorrencia" element={<ProfNovaOcorrencia />} />
-          <Route path="ocorrencias" element={<ProfMinhasOcorrencias />} />
           <Route path="comunicacoes" element={<ProfessorComunicacoes />} />
-          <Route path="alunos" element={<div>Alunos em breve</div>} />
+          <Route path="alunos" element={<Turmas />} />
         </Route>
       </Routes>
     </BrowserRouter>

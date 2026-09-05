@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone, Download } from 'lucide-react';
+import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone, Download, Pencil } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 function formatBrazilPhone(phone) {
@@ -29,6 +29,29 @@ export default function GestorAlunos() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState(null);
+
+  const openNewModal = () => {
+    setIsEditing(false);
+    setEditingStudentId(null);
+    setForm({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
+    setShowModal(true);
+  };
+
+  const openEditModal = (aluno) => {
+    setIsEditing(true);
+    setEditingStudentId(aluno.id);
+    setForm({
+      name: aluno.name || '',
+      enrollment: aluno.enrollment || '',
+      shift: aluno.shift === 'morning' ? 'Manhã' : (aluno.shift === 'afternoon' ? 'Tarde' : 'Noite'),
+      turma_texto: aluno.turma_nome || '',
+      guardian_name: aluno.guardian_name || '',
+      guardian_phone: aluno.guardian_phone || ''
+    });
+    setShowModal(true);
+  };
 
   // Importação
   const fileInputRef = useRef(null);
@@ -96,29 +119,53 @@ export default function GestorAlunos() {
     }
     setSaving(true);
 
-    // Criar/obter turma com normalização
     const classId = await findOrCreateClass(form.turma_texto.trim());
 
-    const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
-      school_id: schoolId,
-      name: form.name,
-      enrollment: form.enrollment,
-      shift: shiftToDb[form.shift] || 'morning',
-      guardian_name: form.guardian_name,
-      guardian_phone: formatBrazilPhone(form.guardian_phone),
-      status: 'active'
-    }]).select().single();
+    if (isEditing && editingStudentId) {
+      const { error: studentError } = await supabase.from('students').update({
+        name: form.name,
+        enrollment: form.enrollment,
+        shift: shiftToDb[form.shift] || 'morning',
+        guardian_name: form.guardian_name,
+        guardian_phone: formatBrazilPhone(form.guardian_phone)
+      }).eq('id', editingStudentId);
 
-    if (studentError) {
-      showToast('Erro ao criar aluno: ' + studentError.message, 'error');
-    } else {
-      if (classId) {
-        await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: classId, school_id: schoolId }]);
+      if (studentError) {
+        showToast('Erro ao atualizar aluno: ' + studentError.message, 'error');
+      } else {
+        if (classId) {
+          await supabase.from('class_students').delete().eq('student_id', editingStudentId);
+          await supabase.from('class_students').insert([{ student_id: editingStudentId, class_id: classId, school_id: schoolId }]);
+        }
+        showToast('Aluno atualizado com sucesso!');
+        setShowModal(false);
+        setIsEditing(false);
+        setEditingStudentId(null);
+        setForm({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
+        fetchData();
       }
-      showToast('Aluno cadastrado com sucesso!');
-      setShowModal(false);
-      setForm({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
-      fetchData();
+    } else {
+      const { data: newStudent, error: studentError } = await supabase.from('students').insert([{
+        school_id: schoolId,
+        name: form.name,
+        enrollment: form.enrollment,
+        shift: shiftToDb[form.shift] || 'morning',
+        guardian_name: form.guardian_name,
+        guardian_phone: formatBrazilPhone(form.guardian_phone),
+        status: 'active'
+      }]).select().single();
+
+      if (studentError) {
+        showToast('Erro ao criar aluno: ' + studentError.message, 'error');
+      } else {
+        if (classId) {
+          await supabase.from('class_students').insert([{ student_id: newStudent.id, class_id: classId, school_id: schoolId }]);
+        }
+        showToast('Aluno cadastrado com sucesso!');
+        setShowModal(false);
+        setForm({ name: '', enrollment: '', shift: 'Manhã', turma_texto: '', guardian_name: '', guardian_phone: '' });
+        fetchData();
+      }
     }
     setSaving(false);
   };
@@ -378,7 +425,7 @@ export default function GestorAlunos() {
           <button onClick={handleDownloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', padding: '10px 16px', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
             <Download size={18} /> Baixar planilha padrão
           </button>
-          <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+          <button onClick={openNewModal} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
             <Plus size={18} /> Novo Aluno
           </button>
         </div>
@@ -431,6 +478,9 @@ export default function GestorAlunos() {
                       <button onClick={() => openHistory(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
                         <Eye size={14} /> Histórico
                       </button>
+                      <button onClick={() => openEditModal(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
+                        <Pencil size={14} /> Editar
+                      </button>
                       <button onClick={() => openDeleteModal(aluno)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #fecaca', borderRadius: '6px', backgroundColor: '#fff5f5', cursor: 'pointer', fontSize: '13px', color: '#dc2626', fontWeight: '500' }} title="Excluir Aluno">
                         <Trash2 size={14} />
                       </button>
@@ -443,8 +493,8 @@ export default function GestorAlunos() {
         )}
       </div>
 
-      {/* Modal Novo Aluno */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Cadastrar Aluno">
+      {/* Modal Novo/Editar Aluno */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={isEditing ? "Editar Aluno" : "Cadastrar Aluno"}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div><label style={lbl}>Nome Completo *</label>
             <input type="text" style={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
@@ -474,7 +524,7 @@ export default function GestorAlunos() {
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
             <button onClick={() => setShowModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '10px 20px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {saving ? <Loader2 size={16} className="animar-giro" /> : null}{saving ? 'Criando...' : 'Cadastrar'}
+              {saving ? <Loader2 size={16} className="animar-giro" /> : null}{saving ? 'Salvando...' : (isEditing ? 'Salvar Alterações' : 'Cadastrar')}
             </button>
           </div>
         </div>

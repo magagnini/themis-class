@@ -7,15 +7,34 @@ import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phon
 import * as XLSX from 'xlsx';
 
 function formatBrazilPhone(phone) {
-  if (!phone) return null;
-  const digits = String(phone).replace(/\D/g, '');
-  if (!digits) return null;
+  if (phone === null || phone === undefined || phone === '') return null;
+
+  // Se o valor vier como número do Excel (possivelmente float), converter sem notação científica
+  let rawStr;
+  if (typeof phone === 'number') {
+    // Usar toFixed(0) para evitar notação científica em números grandes
+    rawStr = Number.isInteger(phone) ? String(phone) : phone.toFixed(0);
+  } else {
+    rawStr = String(phone);
+  }
+
+  // Remover tudo que não for dígito (parênteses, hífens, espaços, pontos, +)
+  const digits = rawStr.replace(/\D/g, '');
+  if (!digits || digits.length < 8) return null;
+
+  // Já tem código do país 55
   if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
     return '+' + digits;
   }
+  // 10 ou 11 dígitos = DDD + número (padrão brasileiro)
   if (digits.length === 10 || digits.length === 11) {
     return '+55' + digits;
   }
+  // 8 ou 9 dígitos = só o número, sem DDD (salvar assim mesmo)
+  if (digits.length === 8 || digits.length === 9) {
+    return digits;
+  }
+  // Qualquer outro caso: adicionar +55 se não começar com 55
   return '+' + (digits.startsWith('55') ? digits : '55' + digits);
 }
 
@@ -178,12 +197,23 @@ export default function GestorAlunos() {
     reader.onload = (evt) => {
       try {
         const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellText: false, cellDates: true });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        // raw:true garante que números grandes do Excel vêm como número JS (sem notação científica no parse)
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
-        // Detectar cabeçalho automaticamente (igual ao Atheneum Lib)
+        // Helper: verifica se cabeçalho da coluna de telefone bate
+        const isPhoneHeader = (c) => {
+          if (typeof c !== 'string') return false;
+          const lc = c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return lc.includes('telefone') || lc.includes('celular') || lc.includes('whatsapp')
+            || lc.includes('fone') || lc.includes('contato') || lc.includes('numero')
+            || lc.includes('número') || lc === 'tel' || lc === 'num'
+            || lc.includes('tel.') || lc.includes('cel.');
+        };
+
+        // Detectar cabeçalho automaticamente
         let headerRowIndex = -1;
         let colNome = -1, colRA = -1, colDigRA = -1, colUF = -1, colNascimento = -1, colTurma = -1, colResponsavel = -1, colTelefone = -1;
 
@@ -200,7 +230,7 @@ export default function GestorAlunos() {
             colNascimento = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('nasc'));
             colTurma = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('turma') || c.toLowerCase().includes('série') || c.toLowerCase().includes('serie')));
             colResponsavel = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('responsável') || c.toLowerCase().includes('responsavel')));
-            colTelefone = row.findIndex(c => typeof c === 'string' && (c.toLowerCase().includes('telefone') || c.toLowerCase().includes('celular') || c.toLowerCase().includes('whatsapp') || c.toLowerCase().includes('fone')));
+            colTelefone = row.findIndex(c => isPhoneHeader(c));
             break;
           }
         }
@@ -222,19 +252,19 @@ export default function GestorAlunos() {
               return {
                 nome: row[colNome]?.toString().trim() || '',
                 matricula: matricula || 'SEM_RA',
-                turma: colTurma !== -1 ? (row[colTurma]?.toString().trim() || '') : '',
-                guardian_name: colResponsavel !== -1 ? (row[colResponsavel]?.toString().trim() || '') : '',
-                guardian_phone: colTelefone !== -1 ? (row[colTelefone]?.toString().trim() || '') : '',
+                turma: colTurma !== -1 && row[colTurma] !== undefined ? row[colTurma].toString().trim() : '',
+                guardian_name: colResponsavel !== -1 && row[colResponsavel] !== undefined ? row[colResponsavel].toString().trim() : '',
+                guardian_phone: colTelefone !== -1 ? row[colTelefone] : '',
               };
             });
         } else {
           // Fallback simples
           alunosTemp = data.slice(1).filter(row => row[0]).map(row => ({
             nome: row[0]?.toString().trim() || '',
-            matricula: row[1]?.toString().trim() || 'SEM_RA',
-            turma: row[2]?.toString().trim() || '',
-            guardian_name: row[3]?.toString().trim() || '',
-            guardian_phone: row[4]?.toString().trim() || '',
+            matricula: row[1] !== undefined ? row[1].toString().trim() : 'SEM_RA',
+            turma: row[2] !== undefined ? row[2].toString().trim() : '',
+            guardian_name: row[3] !== undefined ? row[3].toString().trim() : '',
+            guardian_phone: row[4],
           }));
         }
 

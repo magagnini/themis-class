@@ -94,7 +94,7 @@ export default function GestorAlunos() {
   const handleDownloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
       ['Nome do aluno', 'RA', 'Turma', 'Nome do responsável', 'Número do responsável'],
-      ['VINICIUS SILVA', '123456', '2º ANO A', 'MARIA SILVA', '11999999999']
+      ['ALUNO EXEMPLO', '123456', '2º ANO A', 'RESPONSÁVEL EXEMPLO', '11999999999']
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Modelo');

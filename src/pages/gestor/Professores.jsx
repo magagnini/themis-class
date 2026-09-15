@@ -3,7 +3,7 @@ import { supabase, supabaseAdminAuth } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Loader2, Lock, Unlock, Mail, AlertTriangle, Eye } from 'lucide-react';
+import { Plus, Loader2, Lock, Unlock, Mail, AlertTriangle } from 'lucide-react';
 
 export default function Professores() {
   const [professors, setProfessors] = useState([]);
@@ -12,12 +12,6 @@ export default function Professores() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [school, setSchool] = useState(null);
-  
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [gestorPassword, setGestorPassword] = useState('');
-  const [passwordToView, setPasswordToView] = useState('');
-  const [verifying, setVerifying] = useState(false);
-  const [selectedProf, setSelectedProf] = useState(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -117,8 +111,7 @@ export default function Professores() {
       phone: form.phone,
       school_id: currentProfile.school_id,
       active: true,
-      temp_password: true,
-      initial_password: form.password
+      temp_password: true
     }, { onConflict: 'id' });
 
     if (profileError) {
@@ -137,36 +130,6 @@ export default function Professores() {
     const { error } = await supabase.from('profiles').update({ active: !prof.active }).eq('id', prof.id);
     if (error) showToast('Erro ao alterar status.', 'error');
     else { showToast(`Professor ${!prof.active ? 'ativado' : 'desativado'}.`); fetchData(); }
-  };
-
-  const openViewPassword = (prof) => {
-    setSelectedProf(prof);
-    setGestorPassword('');
-    setPasswordToView('');
-    setShowPasswordModal(true);
-  };
-
-  const verifyAndShowPassword = async () => {
-    if (!gestorPassword) return showToast('Digite sua senha.', 'error');
-    setVerifying(true);
-    
-    // Obter email do gestor atual
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Tentar fazer login para verificar a senha usando o cliente secundário para evitar sobrescrever a sessão principal ou usando o principal (seguro se for a mesma conta)
-    const { error } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: gestorPassword,
-    });
-
-    if (error) {
-      showToast('Senha incorreta.', 'error');
-    } else {
-      // Fetch the specific profile again to ensure we have the latest initial_password
-      const { data: pData } = await supabase.from('profiles').select('initial_password').eq('id', selectedProf.id).single();
-      setPasswordToView(pData?.initial_password || 'Senha não registrada/já alterada');
-    }
-    setVerifying(false);
   };
 
   const maxProfessors = school?.max_professors || 30;
@@ -230,16 +193,10 @@ export default function Professores() {
                   </td>
                   <td style={{ padding: '14px 16px' }}><Badge type={prof.active ? 'active' : 'inactive'}>{prof.active ? 'Ativo' : 'Inativo'}</Badge></td>
                   <td style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => openViewPassword(prof)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: '500' }}>
-                        <Eye size={14} /> Senha
-                      </button>
-                      <button onClick={() => toggleStatus(prof)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: `1px solid ${prof.active ? '#fca5a5' : '#6ee7b7'}`, borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: prof.active ? '#ef4444' : '#059669', fontWeight: '500' }}>
-                        {prof.active ? <><Lock size={14} /> Desativar</> : <><Unlock size={14} /> Ativar</>}
-                      </button>
-                    </div>
+                    <button onClick={() => toggleStatus(prof)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', border: `1px solid ${prof.active ? '#fca5a5' : '#6ee7b7'}`, borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: prof.active ? '#ef4444' : '#059669', fontWeight: '500' }}>
+                      {prof.active ? <><Lock size={14} /> Desativar</> : <><Unlock size={14} /> Ativar</>}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -279,46 +236,6 @@ export default function Professores() {
               {saving ? 'Criando...' : 'Cadastrar'}
             </button>
           </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Visualizar Senha">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <p style={{ margin: 0, color: '#374151', fontSize: '14px' }}>
-            Para visualizar a senha inicial de <strong>{selectedProf?.name}</strong>, confirme sua própria senha de Gestor.
-          </p>
-
-          {!passwordToView ? (
-            <>
-              <div>
-                <label style={lbl}>Sua Senha de Gestor</label>
-                <input 
-                  type="password" 
-                  style={inp} 
-                  value={gestorPassword} 
-                  onChange={e => setGestorPassword(e.target.value)} 
-                  placeholder="Digite sua senha..."
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <button onClick={() => setShowPasswordModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontWeight: '500' }}>Cancelar</button>
-                <button onClick={verifyAndShowPassword} disabled={verifying} style={{ padding: '10px 20px', backgroundColor: '#9b1c26', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {verifying ? <Loader2 size={16} className="animar-giro" /> : <Eye size={16} />}
-                  {verifying ? 'Verificando...' : 'Visualizar Senha'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
-              <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#166534', fontWeight: '600' }}>Senha Inicial do Usuário:</p>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#15803d', letterSpacing: '2px' }}>
-                {passwordToView}
-              </div>
-              <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#166534' }}>
-                Copie e envie para o professor. Por segurança, essa senha não mudará aqui caso o professor a altere posteriormente.
-              </p>
-            </div>
-          )}
         </div>
       </Modal>
 

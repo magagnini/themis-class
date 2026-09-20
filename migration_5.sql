@@ -87,7 +87,8 @@ INSERT INTO public.followup_types (school_id, name, description, active, is_glob
   (NULL, 'Reunião com responsável', 'Reunião formal com o responsável na escola.', TRUE, TRUE),
   (NULL, 'Advertência formal', 'Emissão de advertência formal ao aluno.', TRUE, TRUE),
   (NULL, 'Acompanhamento individual', 'Plano de acompanhamento individual do aluno.', TRUE, TRUE),
-  (NULL, 'Encaminhamento à direção', 'Encaminhamento do caso à direção escolar.', TRUE, TRUE)
+  (NULL, 'Encaminhamento à direção', 'Encaminhamento do caso à direção escolar.', TRUE, TRUE),
+  (NULL, 'Outros', 'Outras ações de acompanhamento não especificadas.', TRUE, TRUE)
 ON CONFLICT DO NOTHING;
 
 -- =================================================================================

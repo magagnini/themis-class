@@ -9,18 +9,19 @@ export default function FazerDesdobramento() {
   const [saving, setSaving] = useState(false);
 
   // Data
+  const [classes, setClasses]         = useState([]);
   const [students, setStudents]       = useState([]);
   const [incidents, setIncidents]     = useState([]);
   const [followupTypes, setFollowupTypes] = useState([]);
 
   // Form state
-  const [studentSearch, setStudentSearch] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [selectedIncident, setSelectedIncident] = useState('');
   const [followups, setFollowups] = useState(['', '', '', '']);
   const [complementacao, setComplementacao] = useState('');
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
-  const [showStudentList, setShowStudentList] = useState(false);
 
   useEffect(() => { init(); }, []);
 
@@ -35,9 +36,9 @@ export default function FazerDesdobramento() {
 
     setSchoolId(profile.school_id);
 
-    // Carregar alunos e tipos de desdobramento em paralelo
-    const [studentsRes, typesRes] = await Promise.all([
-      supabase.from('students').select('id, name').eq('school_id', profile.school_id).eq('status', 'active').order('name'),
+    // Carregar turmas e tipos de desdobramento
+    const [classesRes, typesRes] = await Promise.all([
+      supabase.from('classes').select('id, name').eq('school_id', profile.school_id).eq('active', true).order('name'),
       supabase.from('followup_types')
         .select('id, name')
         .or(`school_id.is.null,school_id.eq.${profile.school_id}`)
@@ -45,23 +46,44 @@ export default function FazerDesdobramento() {
         .order('name'),
     ]);
 
-    setStudents(studentsRes.data || []);
+    setClasses(classesRes.data || []);
     setFollowupTypes(typesRes.data || []);
     setLoading(false);
   };
 
-  const filteredStudents = students.filter(s =>
-    s.name.toLowerCase().includes(studentSearch.toLowerCase())
-  );
-
-  const selectStudent = async (student) => {
-    setSelectedStudent(student);
-    setStudentSearch(student.name);
-    setShowStudentList(false);
+  const handleClassChange = async (classId) => {
+    setSelectedClassId(classId);
+    setSelectedStudent(null);
+    setStudents([]);
     setSelectedIncident('');
     setIncidents([]);
-    setLoadingIncidents(true);
 
+    if (!classId) return;
+
+    setLoadingStudents(true);
+    const { data: csData } = await supabase
+      .from('class_students')
+      .select('student_id, students(id, name, status)')
+      .eq('class_id', classId);
+
+    const mapped = (csData || [])
+      .map(cs => cs.students)
+      .filter(s => s && s.status === 'active')
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    setStudents(mapped);
+    setLoadingStudents(false);
+  };
+
+  const selectStudent = async (studentId) => {
+    const student = students.find(s => s.id === studentId);
+    setSelectedStudent(student || null);
+    setSelectedIncident('');
+    setIncidents([]);
+
+    if (!student) return;
+
+    setLoadingIncidents(true);
     const { data } = await supabase
       .from('incidents')
       .select('id, incident_date, incident_types_list, description')
@@ -105,11 +127,13 @@ export default function FazerDesdobramento() {
       showToast('Desdobramento registrado com sucesso!');
       // Reset form
       setSelectedStudent(null);
-      setStudentSearch('');
       setSelectedIncident('');
       setIncidents([]);
       setFollowups(['', '', '', '']);
       setComplementacao('');
+      // Mantém a turma selecionada para facilitar o próximo
+      const classEl = document.getElementById('student-select');
+      if (classEl) classEl.value = '';
     }
     setSaving(false);
   };
@@ -140,53 +164,54 @@ export default function FazerDesdobramento() {
 
       <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-        {/* Passo 1: Aluno */}
+        {/* Passo 1: Turma */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
             <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#9b1c26', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>1</div>
+            <span style={{ fontWeight: '600', color: '#374151', fontSize: '14px' }}>Selecionar Turma</span>
+          </div>
+          <select
+            style={{ ...inp, color: selectedClassId ? '#111827' : '#9ca3af' }}
+            value={selectedClassId}
+            onChange={e => handleClassChange(e.target.value)}
+          >
+            <option value="">Selecione uma turma...</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Passo 2: Aluno */}
+        <div style={{ opacity: selectedClassId ? 1 : 0.6, pointerEvents: selectedClassId ? 'auto' : 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: selectedClassId ? '#9b1c26' : '#d1d5db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>2</div>
             <span style={{ fontWeight: '600', color: '#374151', fontSize: '14px' }}>Selecionar Aluno</span>
           </div>
-          <div style={{ position: 'relative' }}>
-            <Search style={{ position: 'absolute', left: '12px', top: '11px', color: '#9ca3af' }} size={16} />
-            <input
-              type="text"
-              placeholder="Buscar aluno por nome..."
-              style={{ ...inp, paddingLeft: '36px' }}
-              value={studentSearch}
-              onChange={e => {
-                setStudentSearch(e.target.value);
-                setShowStudentList(true);
-                if (!e.target.value) { setSelectedStudent(null); setIncidents([]); }
-              }}
-              onFocus={() => setShowStudentList(true)}
-            />
-            {showStudentList && studentSearch && filteredStudents.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: '200px', overflowY: 'auto', marginTop: '4px' }}>
-                {filteredStudents.slice(0, 20).map(s => (
-                  <div
-                    key={s.id}
-                    onClick={() => selectStudent(s)}
-                    style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '14px', color: '#111827', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fff'}
-                  >
-                    <ChevronRight size={14} color="#9b1c26" /> {s.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {selectedStudent && (
-            <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fdf2f2', borderRadius: '6px', fontSize: '13px', color: '#9b1c26', fontWeight: '600' }}>
-              ✓ Aluno selecionado: {selectedStudent.name}
+          {loadingStudents ? (
+            <div style={{ textAlign: 'center', padding: '12px' }}>
+              <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} />
             </div>
+          ) : (
+            <select
+              id="student-select"
+              style={{ ...inp, color: selectedStudent ? '#111827' : '#9ca3af' }}
+              value={selectedStudent ? selectedStudent.id : ''}
+              onChange={e => selectStudent(e.target.value)}
+              disabled={!selectedClassId}
+            >
+              <option value="">{selectedClassId ? 'Selecione o aluno...' : 'Selecione uma turma primeiro'}</option>
+              {students.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
           )}
         </div>
 
-        {/* Passo 2: Ocorrência */}
-        <div>
+        {/* Passo 3: Ocorrência */}
+        <div style={{ opacity: selectedStudent ? 1 : 0.6, pointerEvents: selectedStudent ? 'auto' : 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: selectedStudent ? '#9b1c26' : '#d1d5db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>2</div>
+            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: selectedStudent ? '#9b1c26' : '#d1d5db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>3</div>
             <span style={{ fontWeight: '600', color: '#374151', fontSize: '14px' }}>Selecionar Ocorrência Relacionada</span>
           </div>
           {loadingIncidents ? (
@@ -211,10 +236,10 @@ export default function FazerDesdobramento() {
           )}
         </div>
 
-        {/* Passo 3: Desdobramentos */}
-        <div>
+        {/* Passo 4: Desdobramentos */}
+        <div style={{ opacity: selectedIncident ? 1 : 0.6, pointerEvents: selectedIncident ? 'auto' : 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: selectedIncident ? '#9b1c26' : '#d1d5db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>3</div>
+            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: selectedIncident ? '#9b1c26' : '#d1d5db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>4</div>
             <span style={{ fontWeight: '600', color: '#374151', fontSize: '14px' }}>Desdobramentos Realizados (máx. 4)</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -242,11 +267,11 @@ export default function FazerDesdobramento() {
         </div>
 
         {/* Complementação */}
-        <div>
-          <label style={lbl}>Complementação (opcional)</label>
+        <div style={{ opacity: selectedIncident ? 1 : 0.6, pointerEvents: selectedIncident ? 'auto' : 'none' }}>
+          <label style={lbl}>Complementação / Observações da opção "Outros" (opcional)</label>
           <textarea
             style={{ ...inp, minHeight: '100px', resize: 'vertical', fontFamily: 'inherit' }}
-            placeholder="Descreva informações adicionais sobre as ações tomadas..."
+            placeholder="Descreva informações adicionais ou especifique caso tenha selecionado 'Outros'..."
             value={complementacao}
             maxLength={1000}
             onChange={e => setComplementacao(e.target.value)}

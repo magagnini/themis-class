@@ -455,9 +455,10 @@ export default function GestorAlunos() {
         typeCounts,
         followups: followupsByIncident,
         totalIncidents: incidents.length,
+        totalFollowups: followupsData ? followupsData.length : 0,
       });
     } else {
-      setAlunoHistory({ recent: [], old_count: 0, loading: false, typeCounts: [], followups: {}, totalIncidents: 0 });
+      setAlunoHistory({ recent: [], old_count: 0, loading: false, typeCounts: [], followups: {}, totalIncidents: 0, totalFollowups: 0 });
     }
   };
 
@@ -693,9 +694,15 @@ export default function GestorAlunos() {
                   </div>
                 )}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Total de ocorrências</div>
-                <div style={{ fontWeight: 'bold', fontSize: '1.8rem', color: '#9b1c26' }}>{alunoHistory.totalIncidents || 0}</div>
+              <div style={{ display: 'flex', gap: '24px', textAlign: 'right' }}>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#6b7280' }}>Total de Ocorrências</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.8rem', color: '#9b1c26' }}>{alunoHistory.totalIncidents || 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#6b7280' }}>Desdobramentos Realizados</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.8rem', color: '#166534' }}>{alunoHistory.totalFollowups || 0}</div>
+                </div>
               </div>
             </div>
 

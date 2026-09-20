@@ -6,6 +6,8 @@ import {
   ClipboardList, FileDown, ListChecks
 } from 'lucide-react';
 
+import BrandLogo from '../components/BrandLogo';
+
 export default function GestorLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -48,10 +50,7 @@ export default function GestorLayout() {
         overflowY: 'auto',
         zIndex: 10
       }}>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <h2 style={{ color: '#9b1c26', margin: '0 0 2px 0', fontSize: '1.4rem', fontWeight: '700' }}>Themis Class</h2>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280' }}>Gestão Escolar de Ocorrências</p>
-        </div>
+        <BrandLogo mode="sidebar" subtitle="Gestão Escolar de Ocorrências" />
 
         <nav style={{ flex: 1, padding: '0.5rem 0' }}>
           {menuItems.map(item => (

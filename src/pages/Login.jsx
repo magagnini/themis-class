@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Lock, Mail, Loader2 } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -83,10 +84,7 @@ export default function Login() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
         
-        <div style={{ textAlign: 'center', marginBottom: '35px' }}>
-          <h1 style={{ color: '#9b1c26', fontSize: '32px', letterSpacing: '-0.5px', marginBottom: '8px', fontWeight: 'bold', margin: 0 }} translate="no">Themis Class</h1>
-          <p style={{ color: '#6b7280', fontSize: '15px', margin: '8px 0 0 0' }}>Gestão de Ocorrências Escolares</p>
-        </div>
+        <BrandLogo mode="login" />
 
         <form onSubmit={handleLogin}>
           {error && (

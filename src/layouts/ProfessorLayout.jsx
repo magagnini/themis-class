@@ -2,6 +2,8 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LayoutDashboard, FilePen, Users, LogOut, MessageSquare } from 'lucide-react';
 
+import BrandLogo from '../components/BrandLogo';
+
 export default function ProfessorLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,10 +28,7 @@ export default function ProfessorLayout() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>
       <aside style={{ width: '260px', backgroundColor: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh' }}>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <h2 style={{ color: '#9b1c26', margin: '0 0 2px 0', fontSize: '1.4rem', fontWeight: '700' }}>Themis Class</h2>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280' }}>Portal do Professor</p>
-        </div>
+        <BrandLogo mode="sidebar" subtitle="Portal do Professor" />
         <nav style={{ flex: 1, padding: '0.5rem 0' }}>
           {menuItems.map(item => (
             <Link key={item.path} to={item.path} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1.25rem', color: isActive(item.path) ? '#9b1c26' : '#4b5563', backgroundColor: isActive(item.path) ? '#fdf2f2' : 'transparent', borderRight: `3px solid ${isActive(item.path) ? '#9b1c26' : 'transparent'}`, textDecoration: 'none', fontWeight: isActive(item.path) ? '600' : '400', fontSize: '14px' }}>

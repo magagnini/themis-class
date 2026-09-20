@@ -48,38 +48,38 @@ export default function BrandLogo({ mode = 'sidebar', subtitle = 'Gestão Escola
   const showFallback = logoFailed && magagniniFailed;
 
   return (
-    <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {!logoFailed && (
-        <img
-          src="/imagens/logo_sistema.png"
-          alt="Logo do Sistema"
-          onLoad={() => setLogoLoaded(true)}
-          onError={() => setLogoFailed(true)}
-          style={{
-            maxHeight: '48px',
-            maxWidth: '100%',
-            objectFit: 'contain',
-            objectPosition: 'left',
-            display: logoLoaded ? 'block' : 'none'
-          }}
-        />
-      )}
+    <div style={{ padding: '1.25rem 1rem', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '8px' }}>
+        {!logoFailed && (
+          <img
+            src="/imagens/logo_sistema.png"
+            alt="Logo do Sistema"
+            onLoad={() => setLogoLoaded(true)}
+            onError={() => setLogoFailed(true)}
+            style={{
+              maxHeight: '42px',
+              maxWidth: '115px',
+              objectFit: 'contain',
+              display: logoLoaded ? 'block' : 'none'
+            }}
+          />
+        )}
 
-      {!magagniniFailed && (
-        <img
-          src="/imagens/logo_magagnini.png"
-          alt="Magagnini Educação"
-          onLoad={() => setMagagniniLoaded(true)}
-          onError={() => setMagagniniFailed(true)}
-          style={{
-            maxHeight: '32px',
-            maxWidth: '100%',
-            objectFit: 'contain',
-            objectPosition: 'left',
-            display: magagniniLoaded ? 'block' : 'none'
-          }}
-        />
-      )}
+        {!magagniniFailed && (
+          <img
+            src="/imagens/logo_magagnini.png"
+            alt="Magagnini Educação"
+            onLoad={() => setMagagniniLoaded(true)}
+            onError={() => setMagagniniFailed(true)}
+            style={{
+              maxHeight: '36px',
+              maxWidth: '100px',
+              objectFit: 'contain',
+              display: magagniniLoaded ? 'block' : 'none'
+            }}
+          />
+        )}
+      </div>
 
       {showFallback && (
         <div>

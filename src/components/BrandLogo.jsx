@@ -22,10 +22,10 @@ export default function BrandLogo({ mode = 'sidebar', subtitle = 'Gestão Escola
             onLoad={() => setLogoLoaded(true)}
             onError={() => setLogoFailed(true)}
             style={{
-              maxHeight: '80px',
+              maxHeight: '180px',
               maxWidth: '100%',
               objectFit: 'contain',
-              margin: '0 auto 8px auto',
+              margin: '0 auto 16px auto',
               display: logoLoaded ? 'block' : 'none'
             }}
           />
@@ -48,8 +48,8 @@ export default function BrandLogo({ mode = 'sidebar', subtitle = 'Gestão Escola
   const showFallback = logoFailed && magagniniFailed;
 
   return (
-    <div style={{ padding: '1.25rem 1rem', borderBottom: '1px solid #e5e7eb' }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '8px' }}>
+    <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
         {!logoFailed && (
           <img
             src="/imagens/logo_sistema.png"
@@ -57,8 +57,9 @@ export default function BrandLogo({ mode = 'sidebar', subtitle = 'Gestão Escola
             onLoad={() => setLogoLoaded(true)}
             onError={() => setLogoFailed(true)}
             style={{
-              maxHeight: '42px',
-              maxWidth: '115px',
+              maxHeight: '90px',
+              maxWidth: '100px',
+              width: '100%',
               objectFit: 'contain',
               display: logoLoaded ? 'block' : 'none'
             }}
@@ -72,8 +73,9 @@ export default function BrandLogo({ mode = 'sidebar', subtitle = 'Gestão Escola
             onLoad={() => setMagagniniLoaded(true)}
             onError={() => setMagagniniFailed(true)}
             style={{
-              maxHeight: '36px',
+              maxHeight: '90px',
               maxWidth: '100px',
+              width: '100%',
               objectFit: 'contain',
               display: magagniniLoaded ? 'block' : 'none'
             }}

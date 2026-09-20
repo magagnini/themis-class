@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { showToast } from '../../components/ui/Toast';
-import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone, Download, Pencil } from 'lucide-react';
+import { Plus, Search, User, Trash2, FileSpreadsheet, Loader2, Upload, Eye, Phone, Download, Pencil, BarChart2, ListOrdered } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 function formatBrazilPhone(phone) {
@@ -382,24 +382,82 @@ export default function GestorAlunos() {
   const openHistory = async (aluno) => {
     setSelectedAluno(aluno);
     setShowHistoryModal(true);
-    setAlunoHistory({ recent: [], old_count: 0, loading: true });
+    setAlunoHistory({ recent: [], old_count: 0, loading: true, typeCounts: [], followups: {} });
 
-    const { data: incidents } = await supabase.from('incidents')
+    // 1. Buscar TODAS as ocorrências do aluno
+    const { data: incidents } = await supabase
+      .from('incidents')
       .select('*, incident_types(name)')
       .eq('student_id', aluno.id)
       .order('incident_date', { ascending: false });
 
+    // 2. Buscar desdobramentos relacionados a ocorrências do aluno
+    const { data: followupsData } = await supabase
+      .from('followups')
+      .select(`
+        *,
+        ft1:followup_1(name),
+        ft2:followup_2(name),
+        ft3:followup_3(name),
+        ft4:followup_4(name)
+      `)
+      .eq('student_id', aluno.id)
+      .order('created_at', { ascending: false });
+
+    // Mapear desdobramentos por incident_id para lookup rápido
+    const followupsByIncident = {};
+    (followupsData || []).forEach(f => {
+      if (f.incident_id) {
+        if (!followupsByIncident[f.incident_id]) followupsByIncident[f.incident_id] = [];
+        followupsByIncident[f.incident_id].push(f);
+      }
+    });
+
     if (incidents) {
       const fifteenDaysAgo = new Date();
       fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-      const recent = [], old = [];
+
+      const recent = [];
+      const old = [];
+
+      // Contadores por tipo (todos os períodos)
+      const typeCountMap = {};
+
       incidents.forEach(inc => {
-        if (new Date(inc.incident_date) >= fifteenDaysAgo) recent.push(inc);
-        else old.push(inc);
+        // Calcular contadores por tipo a partir de incident_types_list (JSONB)
+        const types = inc.incident_types_list || [];
+        types.forEach(t => {
+          const label = t.label || t.name || 'Outro';
+          typeCountMap[label] = (typeCountMap[label] || 0) + 1;
+        });
+        // Fallback se não houver types list
+        if (types.length === 0 && inc.description) {
+          const label = 'Outros';
+          typeCountMap[label] = (typeCountMap[label] || 0) + 1;
+        }
+
+        if (new Date(inc.incident_date) >= fifteenDaysAgo) {
+          recent.push(inc);
+        } else {
+          old.push(inc);
+        }
       });
-      setAlunoHistory({ recent, old_count: old.length, loading: false });
+
+      // Ordenar contadores por quantidade (desc)
+      const typeCounts = Object.entries(typeCountMap)
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count);
+
+      setAlunoHistory({
+        recent,
+        old_count: old.length,
+        loading: false,
+        typeCounts,
+        followups: followupsByIncident,
+        totalIncidents: incidents.length,
+      });
     } else {
-      setAlunoHistory({ recent: [], old_count: 0, loading: false });
+      setAlunoHistory({ recent: [], old_count: 0, loading: false, typeCounts: [], followups: {}, totalIncidents: 0 });
     }
   };
 
@@ -624,6 +682,7 @@ export default function GestorAlunos() {
           <div style={{ padding: '2rem', textAlign: 'center' }}><Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} /></div>
         ) : (
           <div>
+            {/* Info do aluno */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
               <div>
                 <div style={{ fontSize: '13px', color: '#6b7280' }}>Turma</div>
@@ -635,37 +694,129 @@ export default function GestorAlunos() {
                 )}
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Ocorrências &gt; 15 dias</div>
-                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', color: '#9b1c26' }}>{alunoHistory.old_count}</div>
+                <div style={{ fontSize: '13px', color: '#6b7280' }}>Total de ocorrências</div>
+                <div style={{ fontWeight: 'bold', fontSize: '1.8rem', color: '#9b1c26' }}>{alunoHistory.totalIncidents || 0}</div>
               </div>
             </div>
-            <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '14px' }}>Últimos 15 dias</h4>
-            {alunoHistory.recent.length === 0 ? (
-              <div style={{ padding: '20px', backgroundColor: '#f9fafb', borderRadius: '6px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-                Sem ocorrências nos últimos 15 dias.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
-                {alunoHistory.recent.map(inc => {
-                  const types = inc.incident_types_list || [];
-                  return (
-                    <div key={inc.id} style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {types.length > 0 ? types.map((t, i) => (
-                            <span key={i} style={{ backgroundColor: '#fef2f2', color: '#991b1b', borderRadius: '20px', padding: '2px 8px', fontSize: '12px', fontWeight: '600' }}>{t.label}</span>
-                          )) : <span style={{ fontWeight: '600', fontSize: '13px', color: '#111827' }}>{inc.description || 'Ocorrência'}</span>}
+
+            {/* SEÇÃO 1: Contadores por tipo (histórico completo) */}
+            <div style={{ marginBottom: '20px' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#374151', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <BarChart2 size={16} color="#9b1c26" /> Histórico de Ocorrências (todos os períodos)
+              </h4>
+              {(!alunoHistory.typeCounts || alunoHistory.typeCounts.length === 0) ? (
+                <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '6px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                  Nenhuma ocorrência registrada.
+                </div>
+              ) : (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f9fafb' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Tipo</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '80px' }}>Qtd.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alunoHistory.typeCounts.map((tc, i) => (
+                        <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '8px 12px', fontSize: '13px', color: '#111827' }}>{tc.label}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                            <span style={{ backgroundColor: '#fef2f2', color: '#991b1b', borderRadius: '12px', padding: '2px 10px', fontWeight: '700', fontSize: '13px' }}>
+                              {tc.count}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid #e5e7eb', backgroundColor: '#fafafa' }}>
+                        <td style={{ padding: '8px 12px', fontSize: '13px', fontWeight: '700', color: '#374151' }}>Total</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <span style={{ backgroundColor: '#9b1c26', color: 'white', borderRadius: '12px', padding: '2px 10px', fontWeight: '700', fontSize: '13px' }}>
+                            {alunoHistory.totalIncidents || 0}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO 2: Últimos 15 dias — ocorrências individuais com desdobramentos */}
+            <div>
+              <h4 style={{ margin: '0 0 10px 0', color: '#374151', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListOrdered size={16} color="#9b1c26" /> Últimos 15 dias
+              </h4>
+              {alunoHistory.recent.length === 0 ? (
+                <div style={{ padding: '20px', backgroundColor: '#f9fafb', borderRadius: '6px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                  Sem ocorrências nos últimos 15 dias.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                  {alunoHistory.recent.map(inc => {
+                    const types = inc.incident_types_list || [];
+                    const incFollowups = (alunoHistory.followups || {})[inc.id] || [];
+                    return (
+                      <div key={inc.id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                        {/* Ocorrência */}
+                        <div style={{ padding: '12px', backgroundColor: '#fff' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {types.length > 0 ? types.map((t, i) => (
+                                <span key={i} style={{ backgroundColor: '#fef2f2', color: '#991b1b', borderRadius: '20px', padding: '2px 8px', fontSize: '12px', fontWeight: '600' }}>
+                                  {t.label}
+                                </span>
+                              )) : (
+                                <span style={{ fontWeight: '600', fontSize: '13px', color: '#111827' }}>{inc.description || 'Ocorrência'}</span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                              {new Date(inc.incident_date).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          {inc.subject && <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#6b7280' }}>Disciplina: {inc.subject}</p>}
+                          {inc.outros_description && <p style={{ margin: 0, fontSize: '13px', color: '#4b5563', fontStyle: 'italic' }}>{inc.outros_description}</p>}
+                          <div style={{ marginTop: '8px' }}><Badge type={inc.status}>{inc.status}</Badge></div>
                         </div>
-                        <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{new Date(inc.incident_date).toLocaleDateString('pt-BR')}</span>
+
+                        {/* Desdobramentos vinculados */}
+                        {incFollowups.length > 0 && (
+                          <div style={{ padding: '10px 12px', backgroundColor: '#f0fdf4', borderTop: '1px solid #bbf7d0' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: '#166534', textTransform: 'uppercase', marginBottom: '6px' }}>
+                              Desdobramentos realizados
+                            </div>
+                            {incFollowups.map(f => {
+                              const slots = [f.ft1, f.ft2, f.ft3, f.ft4].filter(s => s?.name);
+                              return (
+                                <div key={f.id} style={{ marginBottom: '6px' }}>
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {slots.map((s, si) => (
+                                      <span key={si} style={{ backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', padding: '2px 8px', fontSize: '12px', fontWeight: '600' }}>
+                                        {s.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  {f.complementacao && (
+                                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#374151', fontStyle: 'italic' }}>
+                                      "{f.complementacao}"
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      {inc.subject && <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#6b7280' }}>Disciplina: {inc.subject}</p>}
-                      {inc.outros_description && <p style={{ margin: 0, fontSize: '13px', color: '#4b5563', fontStyle: 'italic' }}>{inc.outros_description}</p>}
-                      <div style={{ marginTop: '8px' }}><Badge type={inc.status}>{inc.status}</Badge></div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+              {alunoHistory.old_count > 0 && (
+                <div style={{ marginTop: '10px', padding: '8px 12px', backgroundColor: '#f9fafb', borderRadius: '6px', fontSize: '13px', color: '#6b7280', textAlign: 'center' }}>
+                  + {alunoHistory.old_count} ocorrência{alunoHistory.old_count > 1 ? 's' : ''} anteriores (há mais de 15 dias) — contabilizadas no histórico acima.
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>

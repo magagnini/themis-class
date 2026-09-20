@@ -2,7 +2,8 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, AlertTriangle, Users, GraduationCap, BookOpen,
-  Settings, LogOut, MessageSquare, FilePen, BarChart3
+  Settings, LogOut, MessageSquare, FilePen, BarChart3,
+  ClipboardList, FileDown, ListChecks
 } from 'lucide-react';
 
 export default function GestorLayout() {
@@ -16,14 +17,16 @@ export default function GestorLayout() {
 
   const menuItems = [
     { path: '/gestor', label: 'Dashboard', icon: <LayoutDashboard size={19} /> },
-    { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={19} /> },
-    { path: '/gestor/fazer-oc', label: 'FAZER OC', icon: <FilePen size={19} /> },
+    { path: '/gestor/fazer-oc', label: 'Fazer OC', icon: <FilePen size={19} /> },
     { path: '/gestor/alunos', label: 'Alunos', icon: <Users size={19} /> },
     { path: '/gestor/professores', label: 'Professores', icon: <GraduationCap size={19} /> },
     { path: '/gestor/turmas', label: 'Turmas', icon: <BookOpen size={19} /> },
     { path: '/gestor/comunicacoes', label: 'Comunicações', icon: <MessageSquare size={19} /> },
     { path: '/gestor/relatorios', label: 'Relatórios', icon: <BarChart3 size={19} /> },
-    { path: '/gestor/configuracoes', label: 'Configurações', icon: <Settings size={19} /> },
+    { path: '/gestor/fazer-desdobramento', label: 'Fazer Desdobramento', icon: <ClipboardList size={19} /> },
+    { path: '/gestor/pdf-desdobramentos', label: 'PDF Desdobramentos', icon: <FileDown size={19} /> },
+    { path: '/gestor/ocorrencias', label: 'Ocorrências', icon: <AlertTriangle size={19} /> },
+    { path: '/gestor/desdobramentos', label: 'Desdobramentos', icon: <ListChecks size={19} /> },
   ];
 
   const isActive = (path) => {

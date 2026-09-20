@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { LayoutDashboard, School, Users, Settings, LogOut, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, School, Users, Settings, LogOut, AlertTriangle, ListChecks } from 'lucide-react';
 
 export default function AdminLayout() {
   const location = useLocation();
@@ -16,6 +16,7 @@ export default function AdminLayout() {
     { path: '/admin/escolas', label: 'Escolas', icon: <School size={19} /> },
     { path: '/admin/usuarios', label: 'Usuários', icon: <Users size={19} /> },
     { path: '/admin/ocorrencias', label: 'Ocorrências Globais', icon: <AlertTriangle size={19} /> },
+    { path: '/admin/desdobramentos', label: 'Desdobramentos', icon: <ListChecks size={19} /> },
     { path: '/admin/configuracoes', label: 'Configurações', icon: <Settings size={19} /> },
   ];
 

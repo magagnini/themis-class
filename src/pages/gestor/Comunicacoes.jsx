@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
-import { MessageSquare, Phone, CheckCircle, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { MessageSquare, Phone, CheckCircle, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 const STATUS_LABEL = { pending: 'Pendente', sent: 'Enviada' };
 const STATUS_COLOR = { pending: '#fef3c7', sent: '#f0fdf4' };
-const STATUS_TEXT = { pending: '#92400e', sent: '#065f46' };
+const STATUS_TEXT  = { pending: '#92400e', sent: '#065f46' };
 
 function formatPhone(phone) {
   if (!phone) return null;
@@ -30,6 +30,7 @@ function buildWhatsappMessage({ studentName, types, subject, date, time, teacher
 export default function Comunicacoes() {
   const [comms, setComms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(null); // ID being toggled
 
   useEffect(() => { fetchComms(); }, []);
 
@@ -38,34 +39,52 @@ export default function Comunicacoes() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
 
-    const { data: profile } = await supabase.from('profiles').select('school_id').eq('id', userData.user.id).single();
+    const { data: profile } = await supabase
+      .from('profiles').select('school_id').eq('id', userData.user.id).single();
     if (!profile?.school_id) return;
 
+    // Fetch communications with live student phone from students table
     const { data, error } = await supabase
       .from('communications')
-      .select('*')
+      .select('*, students(guardian_phone, guardian_name)')
       .eq('school_id', profile.school_id)
       .eq('channel', 'whatsapp')
       .order('created_at', { ascending: false });
 
     if (error) console.error(error);
-    setComms(data || []);
+
+    // Merge the live phone from students table
+    const merged = (data || []).map(c => ({
+      ...c,
+      live_phone: c.students?.guardian_phone || c.guardian_phone || c.recipient_contact,
+    }));
+
+    setComms(merged);
     setLoading(false);
   };
 
-  const markAsSent = async (commId) => {
+  // Toggle status: pending <-> sent (Gestor only)
+  const toggleStatus = async (comm) => {
+    const newStatus = comm.status === 'sent' ? 'pending' : 'sent';
+    setToggling(comm.id);
+    const update = { status: newStatus };
+    if (newStatus === 'sent') update.whatsapp_sent_at = new Date().toISOString();
+
     const { error } = await supabase
-      .from('communications')
-      .update({ status: 'sent', whatsapp_sent_at: new Date().toISOString() })
-      .eq('id', commId);
-    if (!error) {
-      setComms(prev => prev.map(c => c.id === commId ? { ...c, status: 'sent', whatsapp_sent_at: new Date().toISOString() } : c));
-      showToast('Comunicação marcada como enviada!');
+      .from('communications').update(update).eq('id', comm.id);
+
+    if (error) {
+      showToast('Erro ao alterar status.', 'error');
+    } else {
+      setComms(prev => prev.map(c => c.id === comm.id ? { ...c, ...update } : c));
+      showToast(`Status alterado para ${STATUS_LABEL[newStatus]}.`);
     }
+    setToggling(null);
   };
 
+  // Always use the live (current) phone from students table
   const handleWhatsapp = (comm) => {
-    const phone = formatPhone(comm.guardian_phone || comm.recipient_contact);
+    const phone = formatPhone(comm.live_phone);
     if (!phone || phone.length < 12) {
       showToast('Número do responsável inválido ou não cadastrado.', 'error');
       return;
@@ -83,7 +102,20 @@ export default function Comunicacoes() {
 
     const encoded = encodeURIComponent(msg);
     window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
-    markAsSent(comm.id);
+
+    // Mark as sent automatically when opening WhatsApp
+    if (comm.status !== 'sent') {
+      supabase.from('communications')
+        .update({ status: 'sent', whatsapp_sent_at: new Date().toISOString() })
+        .eq('id', comm.id)
+        .then(() => {
+          setComms(prev => prev.map(c =>
+            c.id === comm.id
+              ? { ...c, status: 'sent', whatsapp_sent_at: new Date().toISOString() }
+              : c
+          ));
+        });
+    }
   };
 
   const pendingCount = comms.filter(c => c.status === 'pending').length;
@@ -99,29 +131,41 @@ export default function Comunicacoes() {
             </span>
           )}
         </div>
+        <button onClick={fetchComms} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', border: '1px solid #d1d5db', borderRadius: '6px', background: 'none', cursor: 'pointer', fontSize: '13px', color: '#374151' }}>
+          <RefreshCw size={14} /> Atualizar
+        </button>
+      </div>
+
+      {/* Legend */}
+      <div style={{ marginBottom: '1rem', padding: '10px 14px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', fontSize: '12px', color: '#075985' }}>
+        <strong>Status de comunicação</strong> é independente do status da ocorrência. Use os botões abaixo para controlar se o responsável já foi notificado.
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} /></div>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} />
+        </div>
       ) : comms.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
           <MessageSquare size={48} color="#d1d5db" style={{ marginBottom: '12px' }} />
-          <p style={{ margin: 0, fontWeight: '500' }}>Nenhuma comunicação pendente.</p>
+          <p style={{ margin: 0, fontWeight: '500' }}>Nenhuma comunicação encontrada.</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px' }}>As ocorrências registradas pelos professores aparecerão aqui.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {comms.map(comm => {
-            const phone = formatPhone(comm.guardian_phone || comm.recipient_contact);
+            const phone = formatPhone(comm.live_phone);
             const hasPhone = phone && phone.length >= 12;
             const types = comm.incident_types_list || [];
             const dateFormatted = comm.incident_date_only
               ? new Date(comm.incident_date_only + 'T12:00:00').toLocaleDateString('pt-BR')
               : comm.created_at ? new Date(comm.created_at).toLocaleDateString('pt-BR') : '—';
+            const isToggling = toggling === comm.id;
 
             return (
               <div key={comm.id} style={{
-                backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                backgroundColor: '#fff', borderRadius: '12px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                 border: `1px solid ${comm.status === 'sent' ? '#bbf7d0' : '#e5e7eb'}`,
                 overflow: 'hidden'
               }}>
@@ -146,14 +190,39 @@ export default function Comunicacoes() {
                       {comm.incident_time && <span>Horário: <strong>{comm.incident_time}</strong></span>}
                     </div>
                   </div>
-                  <span style={{
-                    padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
-                    backgroundColor: STATUS_COLOR[comm.status] || STATUS_COLOR.pending,
-                    color: STATUS_TEXT[comm.status] || STATUS_TEXT.pending
-                  }}>
-                    {comm.status === 'sent' ? <CheckCircle size={12} style={{ marginRight: '4px' }} /> : <Clock size={12} style={{ marginRight: '4px' }} />}
-                    {STATUS_LABEL[comm.status] || 'Pendente'}
-                  </span>
+
+                  {/* Status badge — Communication status (independent of incident status) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                      backgroundColor: STATUS_COLOR[comm.status] || STATUS_COLOR.pending,
+                      color: STATUS_TEXT[comm.status] || STATUS_TEXT.pending
+                    }}>
+                      {comm.status === 'sent'
+                        ? <CheckCircle size={12} />
+                        : <Clock size={12} />}
+                      Comunicação: {STATUS_LABEL[comm.status] || 'Pendente'}
+                    </span>
+
+                    {/* Toggle button — Gestor only */}
+                    <button
+                      onClick={() => toggleStatus(comm)}
+                      disabled={isToggling}
+                      style={{
+                        fontSize: '12px', padding: '4px 10px',
+                        border: `1px solid ${comm.status === 'sent' ? '#fca5a5' : '#6ee7b7'}`,
+                        borderRadius: '6px', background: 'none', cursor: 'pointer',
+                        color: comm.status === 'sent' ? '#dc2626' : '#059669',
+                        fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      {isToggling
+                        ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                        : null}
+                      {comm.status === 'sent' ? 'Marcar Pendente' : 'Marcar Enviada'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Ocorrências */}
@@ -176,14 +245,19 @@ export default function Comunicacoes() {
                   )}
                 </div>
 
-                {/* Responsável + Botão */}
+                {/* Responsável + Botão WhatsApp */}
                 <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <p style={{ margin: '0 0 2px 0', fontSize: '12px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Responsável</p>
                     {hasPhone ? (
                       <p style={{ margin: 0, fontSize: '14px', color: '#111827', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Phone size={14} color="#9b1c26" />
-                        {comm.guardian_phone || comm.recipient_contact}
+                        {comm.live_phone}
+                        {comm.live_phone !== (comm.guardian_phone || comm.recipient_contact) && (
+                          <span style={{ fontSize: '11px', color: '#059669', backgroundColor: '#f0fdf4', padding: '1px 6px', borderRadius: '10px' }}>
+                            Número atualizado
+                          </span>
+                        )}
                       </p>
                     ) : (
                       <p style={{ margin: 0, fontSize: '13px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>

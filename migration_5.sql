@@ -1,72 +1,95 @@
--- ============================================================
--- MIGRATION 5 — NOVAS OCORRÊNCIAS GLOBAIS E CAMPO DE IDADE
--- Execute no SQL Editor do Supabase
--- ============================================================
+-- =================================================================================
+-- MIGRATION 5: MÓDULO DESDOBRAMENTOS
+-- Execute este script no Supabase SQL Editor
+-- =================================================================================
 
--- 1. Adicionar campo 'student_age' na tabela incidents, caso seja necessário buscar depois
-ALTER TABLE public.incidents ADD COLUMN IF NOT EXISTS student_age INTEGER;
+-- 1. TABELA followup_types (tipos de desdobramento)
+CREATE TABLE IF NOT EXISTS public.followup_types (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE, -- NULL = global (admin)
+  name TEXT NOT NULL,
+  description TEXT,
+  active BOOLEAN DEFAULT TRUE,
+  is_global BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Adicionar tipo e student_id na tabela reports
-ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS report_type TEXT DEFAULT 'general';
-ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS student_id UUID REFERENCES public.students(id) ON DELETE CASCADE;
+-- 2. TABELA followups (desdobramentos realizados)
+CREATE TABLE IF NOT EXISTS public.followups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  school_id UUID NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+  student_id UUID NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+  incident_id UUID REFERENCES public.incidents(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  followup_1 UUID REFERENCES public.followup_types(id) ON DELETE SET NULL,
+  followup_2 UUID REFERENCES public.followup_types(id) ON DELETE SET NULL,
+  followup_3 UUID REFERENCES public.followup_types(id) ON DELETE SET NULL,
+  followup_4 UUID REFERENCES public.followup_types(id) ON DELETE SET NULL,
+  complementacao TEXT CHECK (char_length(complementacao) <= 1000),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- 2. Atualizar os tipos de ocorrência globais (is_default = true)
-DELETE FROM public.incident_types WHERE school_id IS NULL AND is_default = TRUE;
+-- 3. ÍNDICES para performance
+CREATE INDEX IF NOT EXISTS idx_followups_school_id ON public.followups(school_id);
+CREATE INDEX IF NOT EXISTS idx_followups_student_id ON public.followups(student_id);
+CREATE INDEX IF NOT EXISTS idx_followups_incident_id ON public.followups(incident_id);
+CREATE INDEX IF NOT EXISTS idx_followups_created_at ON public.followups(created_at);
+CREATE INDEX IF NOT EXISTS idx_followup_types_school_id ON public.followup_types(school_id);
 
-INSERT INTO public.incident_types (name, description, is_default, scope, school_id, active) VALUES
-('Acidentes e Eventos Inesperados', 'Acidentes e Eventos Inesperados', TRUE, 'global', NULL, TRUE),
-('Agressão Física', 'Agressão Física', TRUE, 'global', NULL, TRUE),
-('Alerta de Desaparecimento', 'Alerta de Desaparecimento', TRUE, 'global', NULL, TRUE),
-('Ameaça de Ataque Ativo', 'Ameaça de Ataque Ativo', TRUE, 'global', NULL, TRUE),
-('Apologia ao Nazismo', 'Apologia ao Nazismo', TRUE, 'global', NULL, TRUE),
-('Assédio Moral', 'Assédio Moral', TRUE, 'global', NULL, TRUE),
-('Assédio Sexual', 'Assédio Sexual', TRUE, 'global', NULL, TRUE),
-('Ataque Ativo Concretizado', 'Ataque Ativo Concretizado', TRUE, 'global', NULL, TRUE),
-('Atos Obscenos / Atos Libidinosos', 'Atos Obscenos / Atos Libidinosos', TRUE, 'global', NULL, TRUE),
-('Bullying e Cyberbullying', 'Bullying e Cyberbullying', TRUE, 'global', NULL, TRUE),
-('Comercialização de Álcool e Tabaco', 'Comercialização de Álcool e Tabaco', TRUE, 'global', NULL, TRUE),
-('Comunicação Violenta / Conflito Verbal', 'Comunicação Violenta / Conflito Verbal', TRUE, 'global', NULL, TRUE),
-('Consumo de Álcool e Tabaco', 'Consumo de Álcool e Tabaco', TRUE, 'global', NULL, TRUE),
-('Consumo de Cigarro Eletrônico', 'Consumo de Cigarro Eletrônico', TRUE, 'global', NULL, TRUE),
-('Consumo de Substâncias Ilícitas', 'Consumo de Substâncias Ilícitas', TRUE, 'global', NULL, TRUE),
-('Crimes Cibernéticos', 'Crimes Cibernéticos', TRUE, 'global', NULL, TRUE),
-('Danos ao Patrimônio', 'Danos ao Patrimônio', TRUE, 'global', NULL, TRUE),
-('Envolvimento com Tráfico de Drogas Ilícitas e Psicoativas', 'Envolvimento com Tráfico de Drogas Ilícitas e Psicoativas', TRUE, 'global', NULL, TRUE),
-('Evasão Escolar', 'Evasão Escolar', TRUE, 'global', NULL, TRUE),
-('Fake News – Disseminação de Informações Falsas', 'Fake News – Disseminação de Informações Falsas', TRUE, 'global', NULL, TRUE),
-('Feminicídio', 'Feminicídio', TRUE, 'global', NULL, TRUE),
-('Furto', 'Furto', TRUE, 'global', NULL, TRUE),
-('Gordofobia', 'Gordofobia', TRUE, 'global', NULL, TRUE),
-('Homicídio / Homicídio Tentado', 'Homicídio / Homicídio Tentado', TRUE, 'global', NULL, TRUE),
-('Homofobia', 'Homofobia', TRUE, 'global', NULL, TRUE),
-('Importunação Sexual / Estupro', 'Importunação Sexual / Estupro', TRUE, 'global', NULL, TRUE),
-('Incitamento e Associação a Atos Infracionais / Crimes', 'Incitamento e Associação a Atos Infracionais / Crimes', TRUE, 'global', NULL, TRUE),
-('Indisciplina', 'Indisciplina', TRUE, 'global', NULL, TRUE),
-('Invasão', 'Invasão', TRUE, 'global', NULL, TRUE),
-('Mal Súbito', 'Mal Súbito', TRUE, 'global', NULL, TRUE),
-('Óbito', 'Óbito', TRUE, 'global', NULL, TRUE),
-('Ocupação de Unidade Escolar', 'Ocupação de Unidade Escolar', TRUE, 'global', NULL, TRUE),
-('Posse de Arma Branca', 'Posse de Arma Branca', TRUE, 'global', NULL, TRUE),
-('Posse de Arma de Brinquedo', 'Posse de Arma de Brinquedo', TRUE, 'global', NULL, TRUE),
-('Posse de Arma de Fogo / Simulacro', 'Posse de Arma de Fogo / Simulacro', TRUE, 'global', NULL, TRUE),
-('Racismo', 'Racismo', TRUE, 'global', NULL, TRUE),
-('Roubo', 'Roubo', TRUE, 'global', NULL, TRUE),
-('Sequestro', 'Sequestro', TRUE, 'global', NULL, TRUE),
-('Sinais de Alterações Emocionais (Irritabilidade, Agressividade, Ansiedade, Pânico)', 'Sinais de Alterações Emocionais (Irritabilidade, Agressividade, Ansiedade, Pânico)', TRUE, 'global', NULL, TRUE),
-('Sinais de Automutilação', 'Sinais de Automutilação', TRUE, 'global', NULL, TRUE),
-('Sinais de Isolamento Social', 'Sinais de Isolamento Social', TRUE, 'global', NULL, TRUE),
-('Situação de Ameaça', 'Situação de Ameaça', TRUE, 'global', NULL, TRUE),
-('Suicídio Concretizado', 'Suicídio Concretizado', TRUE, 'global', NULL, TRUE),
-('Tentativa de Suicídio', 'Tentativa de Suicídio', TRUE, 'global', NULL, TRUE),
-('Transfobia', 'Transfobia', TRUE, 'global', NULL, TRUE),
-('Uso Inadequado de Dispositivos Eletrônicos', 'Uso Inadequado de Dispositivos Eletrônicos', TRUE, 'global', NULL, TRUE),
-('Violência de Gênero contra Meninas e Mulheres', 'Violência de Gênero contra Meninas e Mulheres', TRUE, 'global', NULL, TRUE),
-('Violência Doméstica / Maus Tratos', 'Violência Doméstica / Maus Tratos', TRUE, 'global', NULL, TRUE),
-('Vulnerabilidade Familiar / Cuidados Parentais', 'Vulnerabilidade Familiar / Cuidados Parentais', TRUE, 'global', NULL, TRUE),
-('Xenofobia', 'Xenofobia', TRUE, 'global', NULL, TRUE),
-('Outros', 'Descreva a ocorrência no campo de observações', TRUE, 'global', NULL, TRUE)
+-- Índices em incidents (melhoria de performance)
+CREATE INDEX IF NOT EXISTS idx_incidents_student_id ON public.incidents(student_id);
+CREATE INDEX IF NOT EXISTS idx_incidents_school_id ON public.incidents(school_id);
+CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON public.incidents(incident_date);
+
+-- 4. RLS - followup_types
+ALTER TABLE public.followup_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone logged in can read active followup_types" ON public.followup_types;
+CREATE POLICY "Anyone logged in can read active followup_types" ON public.followup_types
+  FOR SELECT USING (
+    active = TRUE AND (
+      school_id IS NULL -- tipos globais visíveis para todos
+      OR school_id = get_auth_school_id() -- tipos da própria escola
+      OR get_auth_role() = 'admin' -- admin vê tudo
+    )
+  );
+
+DROP POLICY IF EXISTS "Admin can manage global followup_types" ON public.followup_types;
+CREATE POLICY "Admin can manage global followup_types" ON public.followup_types
+  USING (get_auth_role() = 'admin');
+
+DROP POLICY IF EXISTS "Gestor can manage own school followup_types" ON public.followup_types;
+CREATE POLICY "Gestor can manage own school followup_types" ON public.followup_types
+  FOR ALL USING (
+    school_id = get_auth_school_id() AND get_auth_role() = 'gestor'
+  );
+
+-- 5. RLS - followups
+ALTER TABLE public.followups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Gestor can do everything on followups" ON public.followups;
+CREATE POLICY "Gestor can do everything on followups" ON public.followups
+  USING (
+    school_id = get_auth_school_id()
+    OR get_auth_role() = 'admin'
+  );
+
+DROP POLICY IF EXISTS "Professor can read school followups" ON public.followups;
+CREATE POLICY "Professor can read school followups" ON public.followups
+  FOR SELECT USING (school_id = get_auth_school_id());
+
+-- 6. DADOS INICIAIS — tipos globais de desdobramento
+INSERT INTO public.followup_types (school_id, name, description, active, is_global) VALUES
+  (NULL, 'Conversa com o aluno', 'Conversa individual com o aluno sobre o comportamento.', TRUE, TRUE),
+  (NULL, 'Contato com responsável', 'Contato telefônico ou presencial com o responsável pelo aluno.', TRUE, TRUE),
+  (NULL, 'Orientação pedagógica', 'Orientação realizada pela equipe pedagógica.', TRUE, TRUE),
+  (NULL, 'Encaminhamento para coordenação', 'Encaminhamento do aluno à coordenação pedagógica.', TRUE, TRUE),
+  (NULL, 'Reunião com responsável', 'Reunião formal com o responsável na escola.', TRUE, TRUE),
+  (NULL, 'Advertência formal', 'Emissão de advertência formal ao aluno.', TRUE, TRUE),
+  (NULL, 'Acompanhamento individual', 'Plano de acompanhamento individual do aluno.', TRUE, TRUE),
+  (NULL, 'Encaminhamento à direção', 'Encaminhamento do caso à direção escolar.', TRUE, TRUE)
 ON CONFLICT DO NOTHING;
 
--- ============================================================
--- FIM DO SCRIPT
--- ============================================================
+-- =================================================================================
+-- FIM DA MIGRAÇÃO 5
+-- =================================================================================

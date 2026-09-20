@@ -22,6 +22,10 @@ import TiposOcorrencia from './pages/gestor/TiposOcorrencia';
 import Comunicacoes from './pages/gestor/Comunicacoes';
 import Relatorios from './pages/gestor/Relatorios';
 import Configuracoes from './pages/gestor/Configuracoes';
+import FazerDesdobramento from './pages/gestor/FazerDesdobramento';
+import Desdobramentos from './pages/gestor/Desdobramentos';
+import PdfDesdobramentos from './pages/gestor/PdfDesdobramentos';
+import AdminDesdobramentos from './pages/admin/Desdobramentos';
 
 import ProfessorLayout from './layouts/ProfessorLayout';
 import ProfessorDashboard from './pages/professor/Dashboard';
@@ -124,6 +128,7 @@ export default function App() {
           <Route path="escolas/:id" element={<AdminSchoolDetails />} />
           <Route path="usuarios" element={<AdminUsers />} />
           <Route path="ocorrencias" element={<AdminOcorrencias />} />
+          <Route path="desdobramentos" element={<AdminDesdobramentos />} />
           <Route path="configuracoes" element={<div>Configurações da Plataforma em breve</div>} />
         </Route>
         
@@ -138,6 +143,9 @@ export default function App() {
           <Route path="comunicacoes" element={<Comunicacoes />} />
           <Route path="relatorios" element={<Relatorios />} />
           <Route path="configuracoes" element={<Configuracoes />} />
+          <Route path="fazer-desdobramento" element={<FazerDesdobramento />} />
+          <Route path="desdobramentos" element={<Desdobramentos />} />
+          <Route path="pdf-desdobramentos" element={<PdfDesdobramentos />} />
         </Route>
 
         {/* Professor Routes */}

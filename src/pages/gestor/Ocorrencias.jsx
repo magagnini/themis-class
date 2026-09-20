@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
-import { Loader2, Plus, Edit2, Lock } from 'lucide-react';
+import { Loader2, Plus, Edit2, Lock, Trash2 } from 'lucide-react';
 import { showToast } from '../../components/ui/Toast';
 
 export default function TiposOcorrencia() {
@@ -66,6 +66,20 @@ export default function TiposOcorrencia() {
     setSaving(false);
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Tem certeza que deseja apagar esta ocorrência? Os registros antigos usando este tipo perderão a referência visual dele.')) return;
+    
+    setLoading(true);
+    const { error } = await supabase.from('incident_types').delete().eq('id', id);
+    if (error) {
+      showToast('Erro ao apagar ocorrência: ' + error.message, 'error');
+    } else {
+      showToast('Ocorrência apagada com sucesso!', 'success');
+      loadData();
+    }
+    setLoading(false);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -90,11 +104,12 @@ export default function TiposOcorrencia() {
                 {['Nome da Ocorrência', 'Descrição', 'Visibilidade / Origem'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
                 ))}
+                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '80px' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
               {types.length === 0 ? (
-                <tr><td colSpan={3} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhum tipo cadastrado.</td></tr>
+                <tr><td colSpan={4} style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Nenhum tipo cadastrado.</td></tr>
               ) : types.map(t => (
                 <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '14px 16px', fontWeight: '500', color: '#111827', fontSize: '14px' }}>
@@ -109,6 +124,13 @@ export default function TiposOcorrencia() {
                       <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', padding: '4px 8px', borderRadius: '12px', fontWeight: '600' }}>Global (Sistema)</span>
                     ) : (
                       <span style={{ backgroundColor: '#f0fdf4', color: '#15803d', padding: '4px 8px', borderRadius: '12px', fontWeight: '600' }}>Minha Escola</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                    {t.school_id !== null && (
+                      <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }} title="Apagar Ocorrência">
+                        <Trash2 size={16} />
+                      </button>
                     )}
                   </td>
                 </tr>

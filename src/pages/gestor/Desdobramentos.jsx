@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Modal } from '../../components/ui/Modal';
 import { Badge } from '../../components/ui/Badge';
 import { showToast } from '../../components/ui/Toast';
-import { Loader2, Plus, Edit2, Lock, Globe } from 'lucide-react';
+import { Loader2, Plus, Edit2, Lock, Globe, Trash2 } from 'lucide-react';
 
 const EMPTY_FORM = { name: '', description: '', active: true };
 
@@ -121,6 +121,18 @@ export default function DesdobramentosConfig() {
     setTogglingId(null);
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Tem certeza que deseja apagar este desdobramento? Registros que utilizaram esta opção perderão a referência visual.')) return;
+
+    const { error } = await supabase.from('followup_types').delete().eq('id', id);
+    if (error) {
+      showToast('Erro ao apagar desdobramento: ' + error.message, 'error');
+    } else {
+      showToast('Desdobramento apagado com sucesso!');
+      await fetchTypes(schoolId);
+    }
+  };
+
   const inp = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' };
 
   return (
@@ -190,8 +202,11 @@ export default function DesdobramentosConfig() {
                           >
                             {togglingId === t.id ? '...' : t.active ? 'Desativar' : 'Ativar'}
                           </button>
-                          <button onClick={() => openEdit(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9b1c26' }}>
+                          <button onClick={() => openEdit(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1d4ed8' }} title="Editar">
                             <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }} title="Apagar">
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       )}

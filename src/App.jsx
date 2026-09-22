@@ -77,12 +77,12 @@ function ProtectedRoute({ children, allowedRoles }) {
           .eq('id', session.user.id)
           .single();
 
-        if (cancelled) return;
-
-        const userRole = data?.role || session.user.user_metadata?.role;
+        // Apenas a role vinda do banco de dados (public.profiles) é confiável.
+        // Nunca confiar em session.user.user_metadata?.role para controle de acesso.
+        const userRole = data?.role;
         setRole(userRole);
 
-        if (allowedRoles && !allowedRoles.includes(userRole)) {
+        if (!userRole || (allowedRoles && !allowedRoles.includes(userRole))) {
           setStatus('denied');
         } else {
           setStatus('ok');

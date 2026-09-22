@@ -31,6 +31,8 @@ export default function Comunicacoes() {
   const [comms, setComms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(null); // ID being toggled
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterScope, setFilterScope] = useState('todas');
 
   useEffect(() => { fetchComms(); }, []);
 
@@ -118,7 +120,13 @@ export default function Comunicacoes() {
     }
   };
 
-  const pendingCount = comms.filter(c => c.status === 'pending').length;
+  const filteredComms = comms.filter(c => {
+    const matchesSearch = (c.student_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesScope = filterScope === 'todas' || c.occurrence_scope === filterScope;
+    return matchesSearch && matchesScope;
+  });
+
+  const pendingCount = filteredComms.filter(c => c.status === 'pending').length;
 
   return (
     <div>
@@ -141,19 +149,39 @@ export default function Comunicacoes() {
         <strong>Status de comunicação</strong> é independente do status da ocorrência. Use os botões abaixo para controlar se o responsável já foi notificado.
       </div>
 
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="🔎 Pesquisar aluno..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+        />
+        <select
+          value={filterScope}
+          onChange={(e) => setFilterScope(e.target.value)}
+          style={{ padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', backgroundColor: '#fff', minWidth: '160px' }}
+        >
+          <option value="todas">Tipo de ocorrência: Todas</option>
+          <option value="pedagogica">Pedagógica</option>
+          <option value="disciplinar">Disciplinar</option>
+        </select>
+      </div>
+
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
           <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b1c26' }} />
         </div>
-      ) : comms.length === 0 ? (
+      ) : filteredComms.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
           <MessageSquare size={48} color="#d1d5db" style={{ marginBottom: '12px' }} />
-          <p style={{ margin: 0, fontWeight: '500' }}>Nenhuma comunicação encontrada.</p>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px' }}>As ocorrências registradas pelos professores aparecerão aqui.</p>
+          <p style={{ margin: 0, fontWeight: '500' }}>Nenhuma ocorrência encontrada para este aluno ou filtro.</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px' }}>Tente alterar a pesquisa.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {comms.map(comm => {
+          {filteredComms.map(comm => {
             const phone = formatPhone(comm.live_phone);
             const hasPhone = phone && phone.length >= 12;
             const types = comm.incident_types_list || [];
@@ -227,7 +255,19 @@ export default function Comunicacoes() {
 
                 {/* Ocorrências */}
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
-                  <p style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ocorrência(s)</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ocorrência(s)</p>
+                    {comm.occurrence_scope && (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase',
+                        backgroundColor: comm.occurrence_scope === 'pedagogica' ? '#e0f2fe' : '#fef2f2',
+                        color: comm.occurrence_scope === 'pedagogica' ? '#0369a1' : '#b91c1c',
+                        border: `1px solid ${comm.occurrence_scope === 'pedagogica' ? '#bae6fd' : '#fecaca'}`
+                      }}>
+                        {comm.occurrence_scope === 'pedagogica' ? 'Pedagógica' : 'Disciplinar'}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {types.length === 0
                       ? <span style={{ fontSize: '13px', color: '#6b7280' }}>{comm.message?.substring(0, 80) || '—'}</span>

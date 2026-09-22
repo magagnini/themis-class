@@ -11,6 +11,7 @@ export default function FazerOC() {
   const [myRole, setMyRole] = useState(null);
   const [professorsList, setProfessorsList] = useState([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [occScope, setOccScope] = useState(''); // 'pedagogica' or 'disciplinar'
 
   // Turmas e alunos (filtrado por turma)
   const [classes, setClasses] = useState([]);
@@ -140,6 +141,7 @@ export default function FazerOC() {
     if (!form.date) return showToast('Informe a data.', 'error');
     if (!form.time) return showToast('Informe o horário.', 'error');
     if (!form.subject.trim()) return showToast('Informe a disciplina.', 'error');
+    if (!occScope) return showToast('Selecione o tipo de encaminhamento da ocorrência (Pedagógica ou Disciplinar).', 'error');
     
     if (!occ1) return showToast('A Ocorrência 1 é obrigatória.', 'error');
 
@@ -198,6 +200,7 @@ export default function FazerOC() {
         severity: 'low',
         description: typesListForDB.map(t => t.label).join(', '),
         incident_number: incidentNumber,
+        occurrence_scope: occScope,
       };
 
       let { data: incident, error: incidentError } = await supabase
@@ -209,6 +212,14 @@ export default function FazerOC() {
       // Fallback seguro caso a coluna incident_number não esteja na tabela incidents
       if (incidentError && incidentError.message?.includes('incident_number')) {
         delete incidentPayload.incident_number;
+        const retry = await supabase.from('incidents').insert(incidentPayload).select().single();
+        incident = retry.data;
+        incidentError = retry.error;
+      }
+
+      // Se der erro porque a coluna occurrence_scope ainda não foi criada no BD
+      if (incidentError && incidentError.message?.includes('occurrence_scope')) {
+        delete incidentPayload.occurrence_scope;
         const retry = await supabase.from('incidents').insert(incidentPayload).select().single();
         incident = retry.data;
         incidentError = retry.error;
@@ -249,11 +260,16 @@ export default function FazerOC() {
         class_name: className,
         message: msgFinal,
         incident_number: incidentNumber,
+        occurrence_scope: occScope,
       };
 
       const { error: commError } = await supabase.from('communications').insert(commPayload);
       if (commError && commError.message?.includes('incident_number')) {
         delete commPayload.incident_number;
+        if (commError.message?.includes('occurrence_scope')) delete commPayload.occurrence_scope;
+        await supabase.from('communications').insert(commPayload);
+      } else if (commError && commError.message?.includes('occurrence_scope')) {
+        delete commPayload.occurrence_scope;
         await supabase.from('communications').insert(commPayload);
       } else if (commError) {
         console.error('Erro ao criar comunicação:', commError);
@@ -513,14 +529,65 @@ export default function FazerOC() {
               style={{ ...inp, minHeight: '100px', resize: 'vertical', fontFamily: 'inherit' }}
               placeholder="Descreva a ocorrência com suas próprias palavras..."
               value={outrosText}
-              maxLength={500}
+              maxLength={750}
               onChange={e => setOutrosText(e.target.value)}
             />
-            <p style={{ marginTop: '4px', fontSize: '12px', color: outrosText.length > 490 ? '#ef4444' : '#6b7280', textAlign: 'right' }}>
-              {outrosText.length} / 500 caracteres
+            <p style={{ marginTop: '4px', fontSize: '12px', color: outrosText.length > 740 ? '#ef4444' : '#6b7280', textAlign: 'right' }}>
+              {outrosText.length} / 750 caracteres
             </p>
           </div>
         )}
+
+        {/* Categoria de Encaminhamento da Ocorrência */}
+        <div style={{ marginTop: '8px' }}>
+          <label style={lbl}>Tipo de Encaminhamento da Ocorrência <span style={{ color: '#ef4444' }}>*</span></label>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setOccScope('pedagogica')}
+              style={{
+                flex: 1,
+                padding: '12px 16px',
+                backgroundColor: occScope === 'pedagogica' ? '#e0f2fe' : '#f9fafb',
+                color: occScope === 'pedagogica' ? '#0369a1' : '#4b5563',
+                border: `2px solid ${occScope === 'pedagogica' ? '#38bdf8' : '#e5e7eb'}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '4px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>Ocorrência Pedagógica</span>
+              <span style={{ fontSize: '12px', fontWeight: '400', color: occScope === 'pedagogica' ? '#0284c7' : '#6b7280' }}>Direcionada aos Coordenadores</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOccScope('disciplinar')}
+              style={{
+                flex: 1,
+                padding: '12px 16px',
+                backgroundColor: occScope === 'disciplinar' ? '#fef2f2' : '#f9fafb',
+                color: occScope === 'disciplinar' ? '#b91c1c' : '#4b5563',
+                border: `2px solid ${occScope === 'disciplinar' ? '#f87171' : '#e5e7eb'}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '4px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>Ocorrência Disciplinar</span>
+              <span style={{ fontSize: '12px', fontWeight: '400', color: occScope === 'disciplinar' ? '#b91c1c' : '#6b7280' }}>Direcionada aos Vice-diretores/Diretores</span>
+            </button>
+          </div>
+        </div>
 
         {/* Mensagem de continuação */}
         <div>

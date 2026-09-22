@@ -502,5 +502,80 @@ BEGIN
 END $$;
 
 -- =================================================================================
--- FIM DA MIGRAÇÃO DE SEGURANÇA
+-- FIM DA MIGRAÇÃO DE SEGURANÇA - TABELAS PRINCIPAIS
+-- =================================================================================
+
+-- 11. CLASS_TEACHERS (vínculo professor-turma)
+-- RLS já habilitado no supabase.sql original.
+-- Reforçar: apenas usuários autenticados da própria escola ou admin
+DROP POLICY IF EXISTS "Users access own school class_teachers" ON public.class_teachers;
+DROP POLICY IF EXISTS "class_teachers_select" ON public.class_teachers;
+DROP POLICY IF EXISTS "class_teachers_modify" ON public.class_teachers;
+
+CREATE POLICY "class_teachers_select" ON public.class_teachers
+  FOR SELECT
+  TO authenticated
+  USING (school_id = get_auth_school_id() OR get_auth_role() = 'admin');
+
+-- Apenas Gestor e Admin gerenciam vínculos professor-turma
+CREATE POLICY "class_teachers_modify" ON public.class_teachers
+  FOR ALL
+  TO authenticated
+  USING (
+    (school_id = get_auth_school_id() AND get_auth_role() = 'gestor')
+    OR get_auth_role() = 'admin'
+  )
+  WITH CHECK (
+    (school_id = get_auth_school_id() AND get_auth_role() = 'gestor')
+    OR get_auth_role() = 'admin'
+  );
+
+-- 12. INCIDENT_STATUS_LOG
+-- Nenhum usuário comum deve alterar o log de status diretamente.
+-- Apenas leitura para o mesmo escopo de escola, sem escrita direta.
+DROP POLICY IF EXISTS "Users access incident status log" ON public.incident_status_log;
+DROP POLICY IF EXISTS "incident_status_log_select" ON public.incident_status_log;
+DROP POLICY IF EXISTS "incident_status_log_insert" ON public.incident_status_log;
+
+CREATE POLICY "incident_status_log_select" ON public.incident_status_log
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.incidents i
+      WHERE i.id = incident_id
+      AND (i.school_id = get_auth_school_id() OR get_auth_role() = 'admin')
+    )
+  );
+
+-- Apenas Gestor e Admin podem inserir no log de status
+CREATE POLICY "incident_status_log_insert" ON public.incident_status_log
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.incidents i
+      WHERE i.id = incident_id
+      AND (
+        (i.school_id = get_auth_school_id() AND get_auth_role() IN ('gestor', 'coordenador'))
+        OR get_auth_role() = 'admin'
+      )
+    )
+  );
+
+-- 13. AUDIT_LOGS (log de auditoria)
+-- Apenas leitura para Gestor (própria escola) e Admin. Sem escrita direta por ninguém.
+DROP POLICY IF EXISTS "Users access own school audit logs" ON public.audit_logs;
+DROP POLICY IF EXISTS "audit_logs_select" ON public.audit_logs;
+
+CREATE POLICY "audit_logs_select" ON public.audit_logs
+  FOR SELECT
+  TO authenticated
+  USING (
+    (school_id = get_auth_school_id() AND get_auth_role() IN ('gestor', 'coordenador'))
+    OR get_auth_role() = 'admin'
+  );
+
+-- =================================================================================
+-- FIM COMPLETO DA MIGRAÇÃO DE SEGURANÇA — MIGRATION 6
 -- =================================================================================

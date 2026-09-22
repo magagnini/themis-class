@@ -44,14 +44,19 @@ export function clearCachedProfile() {
  * - Se não, busca no banco e guarda no cache.
  */
 export async function getUserProfile() {
-  // Verificar cache primeiro
-  const cached = getCachedProfile();
-  if (cached) return cached;
-
-  // Buscar sessão + perfil
+  // Buscar sessão atual ANTES de verificar o cache,
+  // para garantir que o cache pertence ao usuário logado agora.
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return null;
+  if (!session?.user) {
+    clearCachedProfile(); // limpar cache se não há sessão
+    return null;
+  }
 
+  // Verificar cache — só é válido se o ID bate com o usuário da sessão atual
+  const cached = getCachedProfile();
+  if (cached && cached.id === session.user.id) return cached;
+
+  // Cache inválido (outro usuário) ou inexistente: buscar do banco
   const { data: profile } = await supabase
     .from('profiles')
     .select('id, name, email, role, school_id, active')

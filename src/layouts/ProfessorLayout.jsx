@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { clearCachedProfile } from '../lib/userCache';
 import { LayoutDashboard, FilePen, Users, LogOut, MessageSquare } from 'lucide-react';
 
 import BrandLogo from '../components/BrandLogo';
@@ -9,6 +10,7 @@ export default function ProfessorLayout() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    clearCachedProfile();
     await supabase.auth.signOut();
     navigate('/login');
   };

@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { clearCachedProfile } from '../lib/userCache';
 import {
   LayoutDashboard, AlertTriangle, Users, GraduationCap, BookOpen,
   Settings, LogOut, MessageSquare, FilePen, BarChart3,
@@ -13,6 +14,7 @@ export default function GestorLayout() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    clearCachedProfile();
     await supabase.auth.signOut();
     navigate('/login');
   };

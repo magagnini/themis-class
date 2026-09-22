@@ -151,7 +151,7 @@ export default function FazerDesdobramento() {
   }
 
   return (
-    <div style={{ maxWidth: '680px' }}>
+    <div style={{ maxWidth: '680px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', color: '#111827', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>

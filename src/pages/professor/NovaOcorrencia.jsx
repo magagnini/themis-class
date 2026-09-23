@@ -39,6 +39,7 @@ export default function FazerOC() {
   const [occ4, setOcc4] = useState('');
 
   const [outrosText, setOutrosText] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
   const [continuationMessage, setContinuationMessage] = useState('');
 
   const CONTINUATION_OPTIONS = [
@@ -198,7 +199,8 @@ export default function FazerOC() {
         outros_description: hasOutros ? outrosText : null,
         status: 'pending',
         severity: 'low',
-        description: typesListForDB.map(t => t.label).join(', '),
+        description: reportDescription?.trim() || typesListForDB.map(t => t.label).join(', '),
+        report_description: reportDescription?.trim() || null,
         incident_number: incidentNumber,
         occurrence_scope: occScope,
       };
@@ -220,6 +222,14 @@ export default function FazerOC() {
       // Se der erro porque a coluna occurrence_scope ainda não foi criada no BD
       if (incidentError && incidentError.message?.includes('occurrence_scope')) {
         delete incidentPayload.occurrence_scope;
+        const retry = await supabase.from('incidents').insert(incidentPayload).select().single();
+        incident = retry.data;
+        incidentError = retry.error;
+      }
+
+      // Se der erro porque a coluna report_description ainda não foi criada no BD
+      if (incidentError && incidentError.message?.includes('report_description')) {
+        delete incidentPayload.report_description;
         const retry = await supabase.from('incidents').insert(incidentPayload).select().single();
         incident = retry.data;
         incidentError = retry.error;
@@ -285,7 +295,9 @@ export default function FazerOC() {
       setOcc3('');
       setOcc4('');
       setOutrosText('');
+      setReportDescription('');
       setContinuationMessage('');
+      setOccScope('');
       setSelectedTeacherId('');
 
       // Subir para o topo da página após registrar
@@ -537,6 +549,23 @@ export default function FazerOC() {
             </p>
           </div>
         )}
+
+        {/* Descrição Detalhada da Ocorrência (exibida somente nos relatórios PDF) */}
+        <div>
+          <label style={lbl}>
+            7. Descrição da Ocorrência <span style={{ fontSize: '12px', fontWeight: '400', color: '#6b7280' }}>(aparecerá somente nos relatórios PDF)</span>
+          </label>
+          <textarea
+            style={{ ...inp, minHeight: '100px', resize: 'vertical', fontFamily: 'inherit' }}
+            placeholder="Descreva detalhes da ocorrência para constar no relatório em PDF (opcional, até 750 caracteres)..."
+            value={reportDescription}
+            maxLength={750}
+            onChange={e => setReportDescription(e.target.value)}
+          />
+          <p style={{ marginTop: '4px', fontSize: '12px', color: reportDescription.length > 740 ? '#ef4444' : '#6b7280', textAlign: 'right' }}>
+            {reportDescription.length} / 750 caracteres
+          </p>
+        </div>
 
         {/* Categoria de Encaminhamento da Ocorrência */}
         <div style={{ marginTop: '8px' }}>

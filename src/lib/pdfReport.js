@@ -175,6 +175,8 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
       // Tipos de ocorrência
       const labels = (inc.incident_types_list || []).map(t => t.label);
       const outrosDesc = inc.outros_description;
+      const joinedLabels = labels.join(', ');
+      const customDesc = (inc.report_description || (inc.description && inc.description !== joinedLabels ? inc.description : null))?.trim();
 
       // Mensagem salva
       const msgSalva = inc.communications?.[0]?.message || null;
@@ -188,6 +190,11 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
         drawText(labels.join(', ') || outrosDesc || '—', MARGIN + 10, 9, fontReg, DARK, CONTENT_W - 10);
         if (outrosDesc && labels.length > 0 && !labels.some(l => l.toLowerCase() === 'outros')) {
           drawText(`Obs: ${outrosDesc}`, MARGIN + 10, 9, fontReg, GRAY, CONTENT_W - 10);
+        }
+        if (customDesc) {
+          y -= 2;
+          drawText('Descrição:', MARGIN, 9, fontBold, DARK);
+          drawText(customDesc, MARGIN + 10, 9, fontReg, DARK, CONTENT_W - 10);
         }
       } else {
         // Formato para relatório individual com identificação clara da ocorrência
@@ -205,6 +212,11 @@ export async function generateWeeklyReportPDF({ schoolName, periodStart, periodE
         });
         if (outrosDesc) {
           drawText(`(Outros): ${outrosDesc}`, MARGIN, 10, fontReg, DARK, CONTENT_W);
+        }
+        if (customDesc) {
+          y -= 2;
+          drawText('Descrição:', MARGIN, 10, fontBold, DARK);
+          drawText(customDesc, MARGIN + 10, 10, fontReg, DARK, CONTENT_W - 10);
         }
       }
       y -= 4;

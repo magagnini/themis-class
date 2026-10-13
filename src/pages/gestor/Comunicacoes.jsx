@@ -87,7 +87,9 @@ export default function Comunicacoes() {
 
         let customDesc = inc.report_description?.trim() || null;
         if (!customDesc && rawDesc) {
-          if (rawDesc.toLowerCase() !== joinedLabels) {
+          const isSingleLabel = typeLabels.includes(rawDesc.toLowerCase());
+          const isJoined = rawDesc.toLowerCase() === joinedLabels;
+          if (!isSingleLabel && !isJoined) {
             customDesc = rawDesc;
           }
         }
@@ -102,7 +104,7 @@ export default function Comunicacoes() {
     const merged = (data || []).map(c => ({
       ...c,
       live_phone: c.students?.guardian_phone || c.guardian_phone || c.recipient_contact,
-      incident_description: incsMap[c.incident_id] || null,
+      incident_description: c.report_description || c.description || incsMap[c.incident_id] || null,
     }));
 
     setComms(merged);

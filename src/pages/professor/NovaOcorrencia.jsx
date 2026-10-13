@@ -265,6 +265,7 @@ export default function FazerOC() {
         incident_time: form.time,
         incident_types_list: typesListForDB,
         outros_description: hasOutros ? outrosText : null,
+        report_description: reportDescription?.trim() || null,
         student_name: student?.name || '',
         guardian_phone: guardianPhone,
         class_name: className,
@@ -273,15 +274,15 @@ export default function FazerOC() {
         occurrence_scope: occScope,
       };
 
-      const { error: commError } = await supabase.from('communications').insert(commPayload);
-      if (commError && commError.message?.includes('incident_number')) {
-        delete commPayload.incident_number;
+      let { error: commError } = await supabase.from('communications').insert(commPayload);
+      if (commError && (commError.message?.includes('incident_number') || commError.message?.includes('occurrence_scope') || commError.message?.includes('report_description'))) {
+        if (commError.message?.includes('incident_number')) delete commPayload.incident_number;
         if (commError.message?.includes('occurrence_scope')) delete commPayload.occurrence_scope;
-        await supabase.from('communications').insert(commPayload);
-      } else if (commError && commError.message?.includes('occurrence_scope')) {
-        delete commPayload.occurrence_scope;
-        await supabase.from('communications').insert(commPayload);
-      } else if (commError) {
+        if (commError.message?.includes('report_description')) delete commPayload.report_description;
+        const retry = await supabase.from('communications').insert(commPayload);
+        commError = retry.error;
+      }
+      if (commError) {
         console.error('Erro ao criar comunicação:', commError);
       }
 

@@ -55,10 +55,54 @@ export default function Comunicacoes() {
 
     if (error) console.error(error);
 
-    // Merge the live phone from students table
+    // Buscar descrições dos incidentes vinculados
+    const incidentIds = [...new Set((data || []).map(c => c.incident_id).filter(Boolean))];
+    const incsMap = {};
+
+    if (incidentIds.length > 0) {
+      let incs = null;
+      // Tentar buscar com report_description
+      const res1 = await supabase
+        .from('incidents')
+        .select('id, description, report_description, incident_types_list')
+        .in('id', incidentIds);
+
+      if (!res1.error && res1.data) {
+        incs = res1.data;
+      } else {
+        // Fallback caso report_description não seja coluna no Supabase
+        const res2 = await supabase
+          .from('incidents')
+          .select('id, description, incident_types_list')
+          .in('id', incidentIds);
+        incs = res2.data;
+      }
+
+      (incs || []).forEach(inc => {
+        const typeLabels = (inc.incident_types_list || [])
+          .map(t => (t.label || t.name || '').trim().toLowerCase())
+          .filter(Boolean);
+        const joinedLabels = typeLabels.join(', ');
+        const rawDesc = (inc.description || '').trim();
+
+        let customDesc = inc.report_description?.trim() || null;
+        if (!customDesc && rawDesc) {
+          if (rawDesc.toLowerCase() !== joinedLabels) {
+            customDesc = rawDesc;
+          }
+        }
+
+        if (customDesc) {
+          incsMap[inc.id] = customDesc;
+        }
+      });
+    }
+
+    // Merge the live phone and incident description
     const merged = (data || []).map(c => ({
       ...c,
       live_phone: c.students?.guardian_phone || c.guardian_phone || c.recipient_contact,
+      incident_description: incsMap[c.incident_id] || null,
     }));
 
     setComms(merged);
@@ -282,6 +326,39 @@ export default function Comunicacoes() {
                     <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#4b5563', fontStyle: 'italic' }}>
                       Obs: {comm.outros_description}
                     </p>
+                  )}
+                  {comm.incident_description && comm.incident_description !== comm.outros_description && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '10px 14px',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      borderLeftWidth: '4px',
+                      borderLeftColor: '#9b1c26'
+                    }}>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        display: 'block',
+                        marginBottom: '4px'
+                      }}>
+                        Descrição da Ocorrência
+                      </span>
+                      <p style={{
+                        margin: 0,
+                        fontSize: '13px',
+                        color: '#334155',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {comm.incident_description}
+                      </p>
+                    </div>
                   )}
                 </div>
 
